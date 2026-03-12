@@ -153,6 +153,10 @@ async function launchLinuxTerminal(options) {
   const launcherBody = [
     '@echo off',
     'setlocal',
+    'chcp 65001 >nul',
+    'set "LANG=C.UTF-8"',
+    'set "LC_ALL=C.UTF-8"',
+    'set "TERM=xterm-256color"',
     'set "ELECTRON_RUN_AS_NODE=1"',
     `${quoteWindowsValue(options.execPath)} ${quoteWindowsValue(helperPath)} ${quoteWindowsValue(sessionFile)}`
   ].join('\r\n');

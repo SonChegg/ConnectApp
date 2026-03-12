@@ -13,6 +13,7 @@ async function main() {
 
   const session = JSON.parse(raw);
   const connection = new Client();
+  const useCookedInput = process.platform === 'win32';
   let shellStream = null;
   let rawModeEnabled = false;
 
@@ -45,7 +46,11 @@ async function main() {
   });
 
   connection.on('ready', () => {
-    process.stdout.write(`Подключено к ${session.username}@${session.host}. Для выхода нажмите Ctrl+].\r\n\r\n`);
+    const exitHint = useCookedInput
+      ? 'Для выхода используйте команду exit или закройте вкладку.'
+      : 'Для выхода нажмите Ctrl+].';
+
+    process.stdout.write(`Подключено к ${session.username}@${session.host}. ${exitHint}\r\n\r\n`);
 
     connection.shell({
       term: process.env.TERM || 'xterm-256color',
@@ -59,6 +64,7 @@ async function main() {
       }
 
       shellStream = stream;
+      stream.setEncoding('utf8');
 
       stream.on('close', () => {
         process.stdout.write('\r\nСессия завершена.\r\n');
@@ -69,19 +75,23 @@ async function main() {
         process.stdout.write(chunk);
       });
 
-      if (process.stdin.isTTY) {
+      process.stdin.setEncoding('utf8');
+
+      if (process.stdin.isTTY && !useCookedInput) {
         process.stdin.setRawMode(true);
         rawModeEnabled = true;
       }
 
       process.stdin.resume();
       process.stdin.on('data', (chunk) => {
-        if (chunk.length === 1 && chunk[0] === 0x1d) {
+        const data = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
+
+        if (data.length === 1 && data[0] === 0x1d) {
           process.stdout.write('\r\nОтключение...\r\n');
           exitWith(0);
         }
 
-        stream.write(chunk);
+        stream.write(data);
       });
     });
   });
