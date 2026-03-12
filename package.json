@@ -1,12 +1,12 @@
 {
   "name": "connect-app",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Desktop remote connection launcher with Windows/Linux profiles and utility installers.",
   "main": "src/main/main.js",
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",
-    "check": "node --check src/main/main.js && node --check src/main/store.js && node --check src/main/remote.js && node --check src/main/port-forward-manager.js && node --check src/main/programs.js && node --check src/preload.js && node --check src/helpers/ssh-terminal.js && node --check src/renderer/app.js",
+    "check": "node --check src/main/main.js && node --check src/main/store.js && node --check src/main/remote.js && node --check src/main/port-forward-manager.js && node --check src/main/programs.js && node --check src/main/ssh-terminal-window.js && node --check src/preload.js && node --check src/helpers/ssh-terminal.js && node --check src/renderer/app.js && node --check src/renderer/terminal.js",
     "dist:win": "electron-builder --win nsis"
   },
   "build": {
@@ -41,6 +41,8 @@
     }
   },
   "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "ssh2": "^1.16.0"
   },
   "devDependencies": {

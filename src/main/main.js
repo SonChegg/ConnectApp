@@ -3,13 +3,15 @@ const path = require('node:path');
 const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const { AppStore, normalizeOptionalPort, normalizePort, normalizeText } = require('./store');
 const { PortForwardManager } = require('./port-forward-manager');
-const { cleanupLauncherArtifacts, launchLinuxTerminal, launchWindowsRdp } = require('./remote');
+const { cleanupLauncherArtifacts, launchWindowsRdp } = require('./remote');
 const { ProgramsService } = require('./programs');
+const { SshTerminalWindowManager } = require('./ssh-terminal-window');
 
 let mainWindow = null;
 let store = null;
 let forwardManager = null;
 let programsService = null;
+let sshTerminalManager = null;
 
 function ensureNonEmpty(value, fieldName) {
   const normalized = normalizeText(value);
@@ -193,10 +195,7 @@ async function handleProfileConnect(_event, payload) {
     });
   }
 
-  return launchLinuxTerminal({
-    userDataDir: app.getPath('userData'),
-    appPath: app.getAppPath(),
-    execPath: process.execPath,
+  return sshTerminalManager.openSession({
     profile,
     username,
     password
@@ -382,6 +381,15 @@ async function handleImportConfig() {
 function registerIpcHandlers() {
   ipcMain.handle('app:bootstrap', async () => buildBootstrapPayload());
   ipcMain.handle('app:open-external', async (_event, url) => shell.openExternal(url));
+  ipcMain.on('terminal:input', (_event, payload) => {
+    sshTerminalManager.handleInput(payload.sessionId, payload.data);
+  });
+  ipcMain.on('terminal:resize', (_event, payload) => {
+    sshTerminalManager.handleResize(payload.sessionId, payload.cols, payload.rows);
+  });
+  ipcMain.handle('terminal:close', async (_event, sessionId) => ({
+    closed: sshTerminalManager.closeSession(sessionId)
+  }));
   ipcMain.handle('config:export', async () => handleExportConfig());
   ipcMain.handle('config:import', async () => handleImportConfig());
   ipcMain.handle('profiles:save', async (_event, payload) => {
@@ -416,6 +424,10 @@ app.whenReady().then(async () => {
   store = new AppStore(app.getPath('userData'));
   await store.init();
   await cleanupLauncherArtifacts(app.getPath('userData'));
+  sshTerminalManager = new SshTerminalWindowManager({
+    preloadPath: path.join(__dirname, '..', 'preload.js'),
+    htmlPath: path.join(__dirname, '..', 'renderer', 'terminal.html')
+  });
 
   programsService = new ProgramsService({
     app,
@@ -441,6 +453,10 @@ app.whenReady().then(async () => {
 app.on('before-quit', async () => {
   if (forwardManager) {
     await forwardManager.stopAll();
+  }
+
+  if (sshTerminalManager) {
+    sshTerminalManager.closeAll();
   }
 });
 

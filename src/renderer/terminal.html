@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SSH Console</title>
+    <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css" />
+    <link rel="stylesheet" href="./terminal.css" />
+  </head>
+  <body>
+    <div class="terminal-shell">
+      <header class="terminal-topbar">
+        <div>
+          <p id="terminalTitle" class="terminal-title">SSH</p>
+          <p id="terminalSubtitle" class="terminal-subtitle"></p>
+        </div>
+        <p id="terminalStatus" class="terminal-status">Подключение...</p>
+      </header>
+
+      <main class="terminal-main">
+        <div id="terminalViewport" class="terminal-viewport"></div>
+      </main>
+    </div>
+
+    <script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
+    <script src="../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+    <script src="./terminal.js"></script>
+  </body>
+</html>
