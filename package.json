@@ -13,6 +13,8 @@
     "appId": "com.connectapp.desktop",
     "productName": "ConnectApp",
     "asar": false,
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
     "directories": {
       "buildResources": "assets",
       "output": "dist"
