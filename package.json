@@ -1,0 +1,48 @@
+{
+  "name": "connect-app",
+  "version": "0.1.0",
+  "description": "Desktop remote connection launcher with Windows/Linux profiles and utility installers.",
+  "main": "src/main/main.js",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check src/main/main.js && node --check src/main/store.js && node --check src/main/remote.js && node --check src/main/port-forward-manager.js && node --check src/main/programs.js && node --check src/preload.js && node --check src/helpers/ssh-terminal.js && node --check src/renderer/app.js",
+    "dist:win": "electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "com.connectapp.desktop",
+    "productName": "ConnectApp",
+    "asar": false,
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "ssh2": "^1.16.0"
+  },
+  "devDependencies": {
+    "electron": "^40.8.0",
+    "electron-builder": "^26.0.12"
+  }
+}

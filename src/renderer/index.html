@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ConnectApp</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="background-glow background-glow--left"></div>
+    <div class="background-glow background-glow--right"></div>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">ConnectApp</p>
+          <h1>Профили удалёнки и утилиты в одном окне</h1>
+          <p class="subtle">Linux через SSH-терминал, Windows через RDP, плюс проброс портов и быстрые установки нужных программ.</p>
+        </div>
+
+        <div class="topbar__actions">
+          <button id="addProfileButton" class="button button--primary">Добавить профиль</button>
+          <button id="forwardButton" class="button">Пробросить порт</button>
+          <button id="programsButton" class="button">Программы</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel panel--main">
+          <div class="section-head">
+            <div>
+              <p class="section-head__eyebrow">Профили</p>
+              <h2>Сохранённые сервера</h2>
+            </div>
+            <p id="platformHint" class="pill"></p>
+          </div>
+
+          <div id="profilesGrid" class="profile-grid"></div>
+        </section>
+
+        <aside class="panel panel--side">
+          <div class="section-head">
+            <div>
+              <p class="section-head__eyebrow">Пробросы</p>
+              <h2>Активные порты</h2>
+            </div>
+          </div>
+
+          <div id="forwardList" class="stack-list"></div>
+
+          <div class="hint-card">
+            <p class="hint-card__title">FxSound preset</p>
+            <p id="fxSoundHint" class="subtle"></p>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <dialog id="profileDialog" class="modal">
+      <form id="profileForm" class="modal__content" method="dialog">
+        <div class="modal__header">
+          <div>
+            <p class="section-head__eyebrow">Профиль</p>
+            <h3 id="profileDialogTitle">Новый профиль</h3>
+          </div>
+          <button type="button" class="icon-button" data-close-modal="profileDialog">Закрыть</button>
+        </div>
+
+        <input type="hidden" id="profileId" />
+
+        <label class="field">
+          <span>Название</span>
+          <input id="profileName" type="text" placeholder="Например, Prod Linux" required />
+        </label>
+
+        <div class="field-row">
+          <label class="field">
+            <span>Тип</span>
+            <select id="profilePlatform">
+              <option value="linux">Linux</option>
+              <option value="windows">Windows</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Порт</span>
+            <input id="profilePort" type="number" min="1" max="65535" placeholder="22 или 3389" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span>IP / хост</span>
+          <input id="profileHost" type="text" placeholder="192.168.1.10 или example.com" required />
+        </label>
+
+        <label class="field">
+          <span>Логин по умолчанию</span>
+          <input id="profileUsername" type="text" placeholder="Можно оставить пустым" />
+        </label>
+
+        <label class="field">
+          <span>Заметка</span>
+          <textarea id="profileNote" rows="3" placeholder="Необязательно"></textarea>
+        </label>
+
+        <div class="modal__footer">
+          <button type="button" class="button" data-close-modal="profileDialog">Отмена</button>
+          <button type="submit" class="button button--primary">Сохранить</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="connectDialog" class="modal">
+      <form id="connectForm" class="modal__content" method="dialog">
+        <div class="modal__header">
+          <div>
+            <p class="section-head__eyebrow">Подключение</p>
+            <h3 id="connectTitle">Сервер</h3>
+          </div>
+          <button type="button" class="icon-button" data-close-modal="connectDialog">Закрыть</button>
+        </div>
+
+        <input type="hidden" id="connectProfileId" />
+
+        <p id="connectDescription" class="subtle"></p>
+
+        <label class="field">
+          <span>Логин</span>
+          <input id="connectUsername" type="text" required />
+        </label>
+
+        <label class="field">
+          <span>Пароль</span>
+          <input id="connectPassword" type="password" placeholder="Можно оставить пустым, если пароль уже сохранён" />
+        </label>
+
+        <label class="checkbox">
+          <input id="connectRemember" type="checkbox" checked />
+          <span>Сохранить пароль для следующих подключений</span>
+        </label>
+
+        <div class="modal__footer">
+          <button type="button" class="button" data-close-modal="connectDialog">Отмена</button>
+          <button type="submit" class="button button--primary">Подключиться</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="forwardDialog" class="modal">
+      <form id="forwardForm" class="modal__content" method="dialog">
+        <div class="modal__header">
+          <div>
+            <p class="section-head__eyebrow">SSH tunnel</p>
+            <h3>Проброс порта</h3>
+          </div>
+          <button type="button" class="icon-button" data-close-modal="forwardDialog">Закрыть</button>
+        </div>
+
+        <label class="field">
+          <span>Взять данные из профиля</span>
+          <select id="forwardProfileSelect">
+            <option value="">Без профиля</option>
+          </select>
+        </label>
+
+        <div class="field-row">
+          <label class="field">
+            <span>IP / хост</span>
+            <input id="forwardHost" type="text" required />
+          </label>
+
+          <label class="field">
+            <span>SSH порт</span>
+            <input id="forwardSshPort" type="number" min="1" max="65535" value="22" />
+          </label>
+        </div>
+
+        <div class="field-row">
+          <label class="field">
+            <span>Логин</span>
+            <input id="forwardUsername" type="text" required />
+          </label>
+
+          <label class="field">
+            <span>Локальный порт</span>
+            <input id="forwardLocalPort" type="number" min="0" max="65535" placeholder="0 = выбрать автоматически" />
+          </label>
+        </div>
+
+        <div class="field-row">
+          <label class="field">
+            <span>Удалённый host</span>
+            <input id="forwardRemoteHost" type="text" value="127.0.0.1" />
+          </label>
+
+          <label class="field">
+            <span>Удалённый порт</span>
+            <input id="forwardRemotePort" type="number" min="1" max="65535" placeholder="8080" required />
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Пароль</span>
+          <input id="forwardPassword" type="password" placeholder="Можно оставить пустым, если уже сохранён" />
+        </label>
+
+        <label class="checkbox">
+          <input id="forwardRemember" type="checkbox" checked />
+          <span>Сохранить пароль для этого SSH-логина</span>
+        </label>
+
+        <div class="modal__footer">
+          <button type="button" class="button" data-close-modal="forwardDialog">Отмена</button>
+          <button type="submit" class="button button--primary">Создать проброс</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="programsDialog" class="modal modal--wide">
+      <div class="modal__content">
+        <div class="modal__header">
+          <div>
+            <p class="section-head__eyebrow">Программы</p>
+            <h3>Быстрая установка и портативные архивы</h3>
+          </div>
+          <button type="button" class="icon-button" data-close-modal="programsDialog">Закрыть</button>
+        </div>
+
+        <div id="programsList" class="program-list"></div>
+
+        <div class="special-card">
+          <div>
+            <p class="hint-card__title">Hiddify config</p>
+            <p class="subtle">Отдельная кнопка копирует готовый JSON-конфиг в буфер обмена.</p>
+          </div>
+          <button id="copyHiddifyButton" class="button">Копировать конфиг</button>
+        </div>
+
+        <div class="special-card special-card--stack">
+          <div>
+            <p class="hint-card__title">FxSound preset (.fac)</p>
+            <p class="subtle">Файл копируется в папку текущего Windows-пользователя, чтобы на разных аккаунтах всё хранилось отдельно.</p>
+            <p class="subtle" id="fxSoundTargetPath"></p>
+            <p class="subtle" id="bundledPresetPath"></p>
+          </div>
+
+          <div class="special-card__actions">
+            <button id="importFxSoundButton" class="button">Выбрать .fac</button>
+            <button id="installBundledPresetButton" class="button">Установить встроенный .fac</button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
