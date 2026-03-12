@@ -16,6 +16,16 @@ function buildConnectionOptions(options) {
   };
 }
 
+function destroyActiveChannels(channels) {
+  for (const channel of channels) {
+    if (channel && typeof channel.destroy === 'function') {
+      channel.destroy();
+    }
+  }
+
+  channels.clear();
+}
+
 class PortForwardManager {
   constructor(onChanged = () => {}) {
     this.onChanged = onChanged;
@@ -30,6 +40,7 @@ class PortForwardManager {
     return {
       id: record.id,
       name: record.name,
+      forwardProfileId: record.forwardProfileId,
       host: record.host,
       sshPort: record.sshPort,
       username: record.username,
@@ -48,6 +59,8 @@ class PortForwardManager {
     const id = crypto.randomUUID();
     const connection = new Client();
     const server = net.createServer();
+    const sockets = new Set();
+    const streams = new Set();
 
     return new Promise((resolve, reject) => {
       let finished = false;
@@ -58,6 +71,8 @@ class PortForwardManager {
         }
 
         finished = true;
+        destroyActiveChannels(sockets);
+        destroyActiveChannels(streams);
         try {
           server.close();
         } catch {}
@@ -86,6 +101,9 @@ class PortForwardManager {
       });
 
       connection.on('close', () => {
+        destroyActiveChannels(sockets);
+        destroyActiveChannels(streams);
+
         if (this.forwards.has(id)) {
           this.forwards.delete(id);
           this.notify();
@@ -104,6 +122,16 @@ class PortForwardManager {
       });
 
       server.on('connection', (socket) => {
+        if (!this.forwards.has(id)) {
+          socket.destroy();
+          return;
+        }
+
+        sockets.add(socket);
+        socket.on('close', () => {
+          sockets.delete(socket);
+        });
+
         connection.forwardOut(
           socket.remoteAddress || '127.0.0.1',
           socket.remotePort || 0,
@@ -115,6 +143,18 @@ class PortForwardManager {
               return;
             }
 
+            if (!this.forwards.has(id)) {
+              stream.destroy();
+              socket.destroy();
+              return;
+            }
+
+            streams.add(stream);
+
+            stream.on('close', () => {
+              streams.delete(stream);
+            });
+
             socket.pipe(stream).pipe(socket);
 
             socket.on('error', () => {
@@ -123,6 +163,18 @@ class PortForwardManager {
 
             stream.on('error', () => {
               socket.destroy();
+            });
+
+            socket.on('close', () => {
+              if (!stream.destroyed) {
+                stream.destroy();
+              }
+            });
+
+            stream.on('close', () => {
+              if (!socket.destroyed) {
+                socket.destroy();
+              }
             });
           }
         );
@@ -137,6 +189,7 @@ class PortForwardManager {
           const record = {
             id,
             name: options.name,
+            forwardProfileId: options.forwardProfileId || null,
             host: options.host,
             sshPort: options.port,
             username: options.username,
@@ -145,7 +198,9 @@ class PortForwardManager {
             remotePort: options.remotePort,
             createdAt: new Date().toISOString(),
             connection,
-            server
+            server,
+            sockets,
+            streams
           };
 
           this.forwards.set(id, record);
@@ -166,6 +221,8 @@ class PortForwardManager {
     }
 
     this.forwards.delete(id);
+    destroyActiveChannels(record.sockets || new Set());
+    destroyActiveChannels(record.streams || new Set());
 
     await new Promise((resolve) => {
       try {

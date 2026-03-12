@@ -6,7 +6,10 @@ Windows desktop app on Electron for:
 - Linux SSH sessions in Windows Terminal;
 - Windows RDP launch via `mstsc`;
 - local SSH port forwarding;
+- saved SSH tunnel profiles;
 - downloading and installing common utility apps;
+- one-click installation of all bundled programs;
+- export and import of a JSON config with profiles, tunnel presets and saved credentials;
 - importing a FxSound preset into the current user's roaming profile.
 
 ## Run locally
@@ -40,3 +43,4 @@ At runtime the app copies presets into the current user's roaming folder:
 
 - The UI can open on Linux/macOS for development, but RDP, hidden installers, archive extraction through PowerShell and Windows Terminal are intended for Windows.
 - Credentials are stored per-user in Electron `userData`; when encryption is available, Electron `safeStorage` is used.
+- Exported config files contain saved passwords in portable form so they can be restored on another PC.

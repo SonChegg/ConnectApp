@@ -1,6 +1,7 @@
+const fs = require('node:fs/promises');
 const path = require('node:path');
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
-const { AppStore, normalizePort, normalizeText } = require('./store');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { AppStore, normalizeOptionalPort, normalizePort, normalizeText } = require('./store');
 const { PortForwardManager } = require('./port-forward-manager');
 const { cleanupLauncherArtifacts, launchLinuxTerminal, launchWindowsRdp } = require('./remote');
 const { ProgramsService } = require('./programs');
@@ -41,10 +42,71 @@ function sanitizeProfileInput(payload) {
   };
 }
 
+function normalizeForwardName(payload) {
+  const explicitName = normalizeText(payload.name);
+
+  if (explicitName) {
+    return explicitName;
+  }
+
+  const username = normalizeText(payload.username);
+  const host = normalizeText(payload.host);
+  const localPort = normalizeOptionalPort(payload.localPort, 0);
+  const remoteHost = normalizeText(payload.remoteHost) || '127.0.0.1';
+  const remotePort = normalizePort(payload.remotePort, 0);
+  const parts = [];
+
+  if (username && host) {
+    parts.push(`${username}@${host}`);
+  } else if (host) {
+    parts.push(host);
+  }
+
+  if (localPort || remotePort) {
+    parts.push(`${localPort || 0} -> ${remoteHost}:${remotePort || 0}`);
+  }
+
+  return parts.join(' • ') || 'SSH tunnel';
+}
+
+function sanitizeForwardProfileInput(payload) {
+  const remotePort = normalizePort(payload.remotePort, 0);
+
+  if (!remotePort) {
+    throw new Error('Укажите удалённый порт для проброса.');
+  }
+
+  return {
+    id: normalizeText(payload.id),
+    name: normalizeForwardName(payload),
+    host: ensureNonEmpty(payload.host, 'IP / хост'),
+    sshPort: normalizePort(payload.sshPort, 22),
+    username: ensureNonEmpty(payload.username, 'Логин'),
+    localPort: normalizeOptionalPort(payload.localPort, 0),
+    remoteHost: normalizeText(payload.remoteHost) || '127.0.0.1',
+    remotePort,
+    note: normalizeText(payload.note)
+  };
+}
+
 async function buildBootstrapPayload() {
+  const profiles = await store.listProfiles();
+  const profilesWithCredentialState = await Promise.all(
+    profiles.map(async (profile) => ({
+      ...profile,
+      hasSavedCredential: Boolean(profile.lastUsername) && await store.hasCredential({
+        platform: profile.platform,
+        host: profile.host,
+        port: profile.port,
+        username: profile.lastUsername
+      })
+    }))
+  );
+
   return {
     platform: process.platform,
-    profiles: await store.listProfiles(),
+    profiles: profilesWithCredentialState,
+    forwardProfiles: await store.listForwardProfiles(),
     forwards: forwardManager.list(),
     programs: await programsService.getProgramsPayload()
   };
@@ -142,16 +204,13 @@ async function handleProfileConnect(_event, payload) {
 }
 
 async function handleStartForward(_event, payload) {
-  const host = ensureNonEmpty(payload.host, 'IP / хост');
-  const username = ensureNonEmpty(payload.username, 'Логин');
-  const sshPort = normalizePort(payload.sshPort, 22);
-  const localPort = normalizePort(payload.localPort, 0);
-  const remotePort = normalizePort(payload.remotePort, 0);
-  const remoteHost = normalizeText(payload.remoteHost) || '127.0.0.1';
-
-  if (!remotePort) {
-    throw new Error('Укажите удалённый порт для проброса.');
-  }
+  const forwardInput = sanitizeForwardProfileInput(payload);
+  const host = forwardInput.host;
+  const username = forwardInput.username;
+  const sshPort = forwardInput.sshPort;
+  const localPort = forwardInput.localPort;
+  const remotePort = forwardInput.remotePort;
+  const remoteHost = forwardInput.remoteHost;
 
   const password = await resolveConnectionPassword({
     platform: 'linux',
@@ -171,20 +230,64 @@ async function handleStartForward(_event, payload) {
     });
   }
 
+  let savedForwardProfile = null;
+
+  if (payload.saveToConfig !== false) {
+    savedForwardProfile = await store.upsertForwardProfile({
+      ...forwardInput,
+      id: normalizeText(payload.id)
+    });
+  }
+
   const forward = await forwardManager.start({
-    name: payload.name || `${username}@${host}`,
+    name: savedForwardProfile ? savedForwardProfile.name : forwardInput.name,
     host,
     port: sshPort,
     username,
     password,
     localPort,
     remoteHost,
-    remotePort
+    remotePort,
+    forwardProfileId: savedForwardProfile ? savedForwardProfile.id : null
   });
 
   return {
     forward,
+    forwardProfile: savedForwardProfile,
     message: `Проброс создан: 127.0.0.1:${forward.localPort} -> ${remoteHost}:${remotePort}`
+  };
+}
+
+async function handleStartSavedForward(_event, forwardProfileId) {
+  const forwardProfile = await store.getForwardProfile(forwardProfileId);
+
+  if (!forwardProfile) {
+    throw new Error('Профиль проброса не найден.');
+  }
+
+  const password = await resolveConnectionPassword({
+    platform: 'linux',
+    host: forwardProfile.host,
+    port: forwardProfile.sshPort,
+    username: forwardProfile.username,
+    password: ''
+  });
+
+  const forward = await forwardManager.start({
+    name: forwardProfile.name,
+    host: forwardProfile.host,
+    port: forwardProfile.sshPort,
+    username: forwardProfile.username,
+    password,
+    localPort: forwardProfile.localPort,
+    remoteHost: forwardProfile.remoteHost,
+    remotePort: forwardProfile.remotePort,
+    forwardProfileId: forwardProfile.id
+  });
+
+  return {
+    forward,
+    message: `Проброс создан: 127.0.0.1:${forward.localPort} -> ${forward.remoteHost}:${forward.remotePort}`
   };
 }
 
@@ -211,8 +314,76 @@ async function handleImportFxSoundPreset() {
   return programsService.importFxSoundPreset(result.filePaths[0]);
 }
 
+async function handleExportConfig() {
+  const saveResult = await dialog.showSaveDialog(mainWindow, {
+    title: 'Сохранить конфиг ConnectApp',
+    defaultPath: `connect-app-config-${new Date().toISOString().slice(0, 10)}.json`,
+    filters: [
+      {
+        name: 'JSON',
+        extensions: ['json']
+      }
+    ]
+  });
+
+  if (saveResult.canceled || !saveResult.filePath) {
+    return {
+      cancelled: true
+    };
+  }
+
+  const snapshot = await store.exportConfigSnapshot();
+  await fs.writeFile(saveResult.filePath, JSON.stringify(snapshot, null, 2), 'utf8');
+
+  return {
+    path: saveResult.filePath,
+    profilesCount: snapshot.profiles.length,
+    forwardProfilesCount: snapshot.forwardProfiles.length,
+    credentialsCount: snapshot.credentials.length,
+    message: 'Конфиг сохранён. В файле есть сохранённые пароли.'
+  };
+}
+
+async function handleImportConfig() {
+  const openResult = await dialog.showOpenDialog(mainWindow, {
+    title: 'Открыть конфиг ConnectApp',
+    properties: ['openFile'],
+    filters: [
+      {
+        name: 'JSON',
+        extensions: ['json']
+      }
+    ]
+  });
+
+  if (openResult.canceled || openResult.filePaths.length === 0) {
+    return {
+      cancelled: true
+    };
+  }
+
+  const raw = await fs.readFile(openResult.filePaths[0], 'utf8');
+  let snapshot;
+
+  try {
+    snapshot = JSON.parse(raw);
+  } catch {
+    throw new Error('Не удалось прочитать JSON-конфиг.');
+  }
+
+  const summary = await store.importConfigSnapshot(snapshot);
+
+  return {
+    message: `Конфиг загружен: профилей ${summary.profilesCount}, порт-профилей ${summary.forwardProfilesCount}, учёток ${summary.credentialsCount}.`,
+    state: await buildBootstrapPayload()
+  };
+}
+
 function registerIpcHandlers() {
   ipcMain.handle('app:bootstrap', async () => buildBootstrapPayload());
+  ipcMain.handle('app:open-external', async (_event, url) => shell.openExternal(url));
+  ipcMain.handle('config:export', async () => handleExportConfig());
+  ipcMain.handle('config:import', async () => handleImportConfig());
   ipcMain.handle('profiles:save', async (_event, payload) => {
     await store.upsertProfile(sanitizeProfileInput(payload));
     return store.listProfiles();
@@ -223,6 +394,11 @@ function registerIpcHandlers() {
   });
   ipcMain.handle('profiles:connect', handleProfileConnect);
   ipcMain.handle('forwards:start', handleStartForward);
+  ipcMain.handle('forward-profiles:start', handleStartSavedForward);
+  ipcMain.handle('forward-profiles:delete', async (_event, forwardProfileId) => {
+    await store.deleteForwardProfile(forwardProfileId);
+    return store.listForwardProfiles();
+  });
   ipcMain.handle('forwards:stop', async (_event, forwardId) => {
     const stopped = await forwardManager.stop(forwardId);
     return {
@@ -230,6 +406,7 @@ function registerIpcHandlers() {
     };
   });
   ipcMain.handle('programs:install', async (_event, programId) => programsService.installProgram(programId));
+  ipcMain.handle('programs:install-all', async () => programsService.installAllPrograms());
   ipcMain.handle('programs:copy-hiddify-config', async () => programsService.copyHiddifyConfig());
   ipcMain.handle('programs:import-fxsound-preset', async () => handleImportFxSoundPreset());
   ipcMain.handle('programs:install-bundled-fxsound-preset', async () => programsService.installBundledFxSoundPreset());

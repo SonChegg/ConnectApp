@@ -1,6 +1,7 @@
 const state = {
   platform: '',
   profiles: [],
+  forwardProfiles: [],
   forwards: [],
   programs: {
     items: [],
@@ -8,7 +9,8 @@ const state = {
     bundledFxSoundPresetPath: '',
     fxSoundPresetTargetDir: ''
   },
-  installBusy: new Set()
+  installBusy: new Set(),
+  installAllBusy: false
 };
 
 const elements = {};
@@ -53,10 +55,18 @@ function getProfileById(profileId) {
   return state.profiles.find((profile) => profile.id === profileId) || null;
 }
 
+function getActiveForwardForProfile(profileId) {
+  return state.forwards.find((forward) => forward.forwardProfileId === profileId) || null;
+}
+
+function buildForwardUrl(localPort) {
+  return `http://127.0.0.1:${localPort}`;
+}
+
 function renderPlatformHint() {
   if (state.platform === 'win32') {
     elements.platformHint.textContent = 'Windows mode';
-    elements.fxSoundHint.textContent = 'Preset будет копироваться в %APPDATA%\\FxSound\\Presets текущего пользователя.';
+    elements.fxSoundHint.textContent = '';
     return;
   }
 
@@ -80,6 +90,7 @@ function renderProfiles() {
   elements.profilesGrid.innerHTML = state.profiles.map((profile) => {
     const badgeClass = profile.platform === 'windows' ? 'badge--windows' : 'badge--linux';
     const badgeText = profile.platform === 'windows' ? 'Windows / RDP' : 'Linux / SSH';
+    const connectLabel = profile.hasSavedCredential ? 'Открыть консоль' : 'Подключиться';
 
     return `
       <article class="profile-card" data-profile-id="${escapeHtml(profile.id)}">
@@ -95,12 +106,13 @@ function renderProfiles() {
 
         <div class="meta-list">
           <span><strong>Логин:</strong> ${escapeHtml(profile.lastUsername || 'не задан')}</span>
+          <span><strong>Пароль:</strong> ${profile.hasSavedCredential ? 'сохранён' : 'не сохранён'}</span>
           <span><strong>Заметка:</strong> ${escapeHtml(profile.note || 'нет')}</span>
         </div>
 
         <div class="profile-card__actions">
           <div class="profile-card__button-row">
-            <button class="button button--primary" data-action="connect-profile" data-profile-id="${escapeHtml(profile.id)}">Подключиться</button>
+            <button class="button button--primary" data-action="connect-profile" data-profile-id="${escapeHtml(profile.id)}">${connectLabel}</button>
             <button class="button" data-action="edit-profile" data-profile-id="${escapeHtml(profile.id)}">Редактировать</button>
           </div>
         </div>
@@ -110,19 +122,21 @@ function renderProfiles() {
 }
 
 function renderForwards() {
-  if (state.forwards.length === 0) {
+  const temporaryForwards = state.forwards.filter((forward) => !forward.forwardProfileId);
+
+  if (temporaryForwards.length === 0) {
     elements.forwardList.innerHTML = `
       <div class="empty-state">
         <div>
-          <p class="hint-card__title">Пробросов нет</p>
-          <p class="subtle">Создай туннель через кнопку "Пробросить порт". После запуска здесь появится активный маршрут и кнопка остановки.</p>
+          <p class="hint-card__title">Временных пробросов нет</p>
+          <p class="subtle">Сохранённые пробросы ниже не пропадают после остановки. Здесь показываются только временные туннели без сохранения в конфиг.</p>
         </div>
       </div>
     `;
     return;
   }
 
-  elements.forwardList.innerHTML = state.forwards.map((forward) => `
+  elements.forwardList.innerHTML = temporaryForwards.map((forward) => `
     <article class="forward-card">
       <div class="forward-card__head">
         <div>
@@ -136,19 +150,70 @@ function renderForwards() {
         <span><strong>Локально:</strong> 127.0.0.1:${escapeHtml(forward.localPort)}</span>
         <span><strong>Удалённо:</strong> ${escapeHtml(forward.remoteHost)}:${escapeHtml(forward.remotePort)}</span>
       </div>
+
+      <div class="profile-card__button-row">
+        <button class="button" data-action="open-forward-link" data-forward-url="${escapeHtml(buildForwardUrl(forward.localPort))}">Открыть в браузере</button>
+      </div>
     </article>
   `).join('');
 }
 
+function renderForwardProfiles() {
+  if (state.forwardProfiles.length === 0) {
+    elements.forwardPresetList.innerHTML = `
+      <div class="empty-state">
+        <div>
+          <p class="hint-card__title">Шаблонов пока нет</p>
+          <p class="subtle">Создай проброс и оставь галочку сохранения в конфиг, чтобы этот маршрут можно было запускать повторно.</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  elements.forwardPresetList.innerHTML = state.forwardProfiles.map((profile) => {
+    const activeForward = getActiveForwardForProfile(profile.id);
+    const isActive = Boolean(activeForward);
+    const localPort = isActive ? activeForward.localPort : profile.localPort;
+    const openUrl = localPort ? buildForwardUrl(localPort) : '';
+
+    return `
+      <article class="forward-card">
+        <div class="forward-card__head">
+          <div>
+            <h3>${escapeHtml(profile.name)}</h3>
+            <p class="subtle">${escapeHtml(profile.username)}@${escapeHtml(profile.host)}:${escapeHtml(profile.sshPort)}</p>
+          </div>
+          <span class="badge ${isActive ? 'badge--linux' : ''}">${isActive ? 'Активен' : 'Остановлен'}</span>
+        </div>
+
+        <div class="meta-list">
+          <span><strong>Маршрут:</strong> 127.0.0.1:${escapeHtml(localPort || 0)} -> ${escapeHtml(profile.remoteHost)}:${escapeHtml(profile.remotePort)}</span>
+          <span><strong>Ссылка:</strong> ${isActive ? escapeHtml(openUrl) : 'станет доступна после запуска'}</span>
+          <span><strong>Заметка:</strong> ${escapeHtml(profile.note || 'нет')}</span>
+        </div>
+
+        <div class="profile-card__button-row">
+          <button class="button button--primary" data-action="${isActive ? 'stop-forward-profile' : 'start-forward-profile'}" data-forward-profile-id="${escapeHtml(profile.id)}" data-forward-id="${escapeHtml(activeForward ? activeForward.id : '')}">
+            ${isActive ? 'Остановить' : 'Прокинуть'}
+          </button>
+          <button class="button" data-action="edit-forward-profile" data-forward-profile-id="${escapeHtml(profile.id)}">Изменить</button>
+          <button class="button" data-action="delete-forward-profile" data-forward-profile-id="${escapeHtml(profile.id)}">Удалить</button>
+          ${isActive ? `<button class="button" data-action="open-forward-link" data-forward-url="${escapeHtml(openUrl)}">Открыть в браузере</button>` : ''}
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
 function renderPrograms() {
   elements.programsList.innerHTML = state.programs.items.map((program) => {
-    const busy = state.installBusy.has(program.id);
+    const busy = state.installAllBusy || state.installBusy.has(program.id);
 
     return `
       <article class="program-card">
         <div class="program-card__meta">
           <h3>${escapeHtml(program.name)}</h3>
-          <p class="subtle">${escapeHtml(program.summary)}</p>
         </div>
 
         <div class="program-card__actions">
@@ -167,6 +232,7 @@ function renderPrograms() {
     : `Если хочешь встроенный пресет в сборке, положи файл сюда: ${state.programs.bundledFxSoundPresetPath}`;
 
   elements.installBundledPresetButton.disabled = !state.programs.hasBundledFxSoundPreset;
+  elements.installAllProgramsButton.disabled = state.installAllBusy;
 }
 
 function renderForwardProfileOptions() {
@@ -218,33 +284,53 @@ function openConnectModal(profileId) {
   openDialog('connectDialog');
 }
 
-function openForwardModal() {
+function getForwardProfileById(profileId) {
+  return state.forwardProfiles.find((profile) => profile.id === profileId) || null;
+}
+
+function openForwardModal(profile = null) {
   elements.forwardForm.reset();
-  elements.forwardSshPort.value = '22';
-  elements.forwardRemoteHost.value = '127.0.0.1';
+  elements.forwardDialogTitle.textContent = profile ? 'Изменить проброс' : 'Проброс порта';
+  elements.forwardPresetId.value = profile ? profile.id : '';
+  elements.forwardName.value = profile ? profile.name : '';
+  elements.forwardHost.value = profile ? profile.host : '';
+  elements.forwardSshPort.value = profile ? String(profile.sshPort || 22) : '22';
+  elements.forwardUsername.value = profile ? profile.username : '';
+  elements.forwardLocalPort.value = profile ? String(profile.localPort || 0) : '';
+  elements.forwardRemoteHost.value = profile ? profile.remoteHost : '127.0.0.1';
+  elements.forwardRemotePort.value = profile ? String(profile.remotePort || '') : '';
+  elements.forwardPassword.value = '';
   elements.forwardRemember.checked = true;
+  elements.forwardSaveToConfig.checked = true;
+  elements.forwardProfileSelect.value = '';
   renderForwardProfileOptions();
   openDialog('forwardDialog');
 }
 
-async function refreshAppState() {
-  const payload = await window.connectApp.bootstrap();
+function applyBootstrapState(payload) {
   state.platform = payload.platform;
   state.profiles = payload.profiles;
+  state.forwardProfiles = payload.forwardProfiles;
   state.forwards = payload.forwards;
   state.programs = payload.programs;
   renderPlatformHint();
   renderProfiles();
   renderForwards();
+  renderForwardProfiles();
   renderPrograms();
   renderForwardProfileOptions();
+}
+
+async function refreshAppState() {
+  const payload = await window.connectApp.bootstrap();
+  applyBootstrapState(payload);
 }
 
 async function handleProfileSubmit(event) {
   event.preventDefault();
 
   try {
-    state.profiles = await window.connectApp.saveProfile({
+    await window.connectApp.saveProfile({
       id: elements.profileId.value,
       name: elements.profileName.value,
       platform: elements.profilePlatform.value,
@@ -254,11 +340,44 @@ async function handleProfileSubmit(event) {
       note: elements.profileNote.value
     });
 
-    renderProfiles();
-    renderForwardProfileOptions();
+    await refreshAppState();
     closeDialog('profileDialog');
     showToast('Профиль сохранён.');
   } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function handleQuickConnect(profileId) {
+  const profile = getProfileById(profileId);
+
+  if (!profile) {
+    return;
+  }
+
+  if (!profile.hasSavedCredential || !profile.lastUsername) {
+    openConnectModal(profileId);
+    return;
+  }
+
+  try {
+    const result = await window.connectApp.connectProfile({
+      profileId,
+      username: profile.lastUsername,
+      password: '',
+      remember: false
+    });
+
+    await refreshAppState();
+    showToast(result.message || 'Подключение запущено.');
+  } catch (error) {
+    if (error.message.includes('Пароль не найден') || error.message.includes('Логин не заполнено')) {
+      await refreshAppState();
+      openConnectModal(profileId);
+      showToast('Сохранённая учётка недоступна. Введите логин и пароль заново.');
+      return;
+    }
+
     showToast(error.message);
   }
 }
@@ -278,9 +397,9 @@ async function handleConnectSubmit(event) {
 
     if (profile) {
       profile.lastUsername = elements.connectUsername.value.trim();
-      renderProfiles();
     }
 
+    await refreshAppState();
     closeDialog('connectDialog');
     showToast(result.message || 'Подключение запущено.');
   } catch (error) {
@@ -293,6 +412,8 @@ async function handleForwardSubmit(event) {
 
   try {
     const result = await window.connectApp.startForward({
+      id: elements.forwardPresetId.value,
+      name: elements.forwardName.value,
       host: elements.forwardHost.value,
       sshPort: elements.forwardSshPort.value,
       username: elements.forwardUsername.value,
@@ -300,11 +421,44 @@ async function handleForwardSubmit(event) {
       remoteHost: elements.forwardRemoteHost.value,
       remotePort: elements.forwardRemotePort.value,
       password: elements.forwardPassword.value,
-      remember: elements.forwardRemember.checked
+      remember: elements.forwardRemember.checked,
+      saveToConfig: elements.forwardSaveToConfig.checked
     });
 
+    await refreshAppState();
     showToast(result.message);
     closeDialog('forwardDialog');
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function handleStopForward(forwardId) {
+  if (!forwardId) {
+    await refreshAppState();
+    showToast('Активный проброс не найден.');
+    return;
+  }
+
+  try {
+    const result = await window.connectApp.stopForward(forwardId);
+
+    if (!result.stopped) {
+      await refreshAppState();
+      showToast('Проброс уже остановлен или не найден.');
+      return;
+    }
+
+    await refreshAppState();
+    showToast('Проброс остановлен.');
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function openForwardUrl(url) {
+  try {
+    await window.connectApp.openExternal(url);
   } catch (error) {
     showToast(error.message);
   }
@@ -325,6 +479,21 @@ async function handleInstallProgram(programId) {
   }
 }
 
+async function handleInstallAllPrograms() {
+  state.installAllBusy = true;
+  renderPrograms();
+
+  try {
+    const result = await window.connectApp.installAllPrograms();
+    showToast(result.message);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    state.installAllBusy = false;
+    renderPrograms();
+  }
+}
+
 async function handleDeleteProfile(profileId) {
   const profile = getProfileById(profileId);
 
@@ -339,10 +508,31 @@ async function handleDeleteProfile(profileId) {
   }
 
   try {
-    state.profiles = await window.connectApp.deleteProfile(profileId);
-    renderProfiles();
-    renderForwardProfileOptions();
+    await window.connectApp.deleteProfile(profileId);
+    await refreshAppState();
     showToast('Профиль удалён.');
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function handleDeleteForwardProfile(profileId) {
+  const profile = getForwardProfileById(profileId);
+
+  if (!profile) {
+    return;
+  }
+
+  const confirmed = window.confirm(`Удалить профиль проброса "${profile.name}"?`);
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await window.connectApp.deleteForwardProfile(profileId);
+    await refreshAppState();
+    showToast('Профиль проброса удалён.');
   } catch (error) {
     showToast(error.message);
   }
@@ -352,6 +542,33 @@ function wireStaticEvents() {
   elements.addProfileButton.addEventListener('click', () => openProfileModal());
   elements.forwardButton.addEventListener('click', () => openForwardModal());
   elements.programsButton.addEventListener('click', () => openDialog('programsDialog'));
+  elements.exportConfigButton.addEventListener('click', async () => {
+    try {
+      const result = await window.connectApp.exportConfig();
+
+      if (result.cancelled) {
+        return;
+      }
+
+      showToast(`${result.message} Файл: ${result.path}`);
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+  elements.importConfigButton.addEventListener('click', async () => {
+    try {
+      const result = await window.connectApp.importConfig();
+
+      if (result.cancelled) {
+        return;
+      }
+
+      applyBootstrapState(result.state);
+      showToast(result.message);
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
 
   document.querySelectorAll('[data-close-modal]').forEach((button) => {
     button.addEventListener('click', () => closeDialog(button.dataset.closeModal));
@@ -373,13 +590,12 @@ function wireStaticEvents() {
 
   elements.profilesGrid.addEventListener('click', (event) => {
     const actionTarget = event.target.closest('[data-action]');
-    const card = event.target.closest('[data-profile-id]');
 
     if (actionTarget) {
       const profileId = actionTarget.dataset.profileId;
 
       if (actionTarget.dataset.action === 'connect-profile') {
-        openConnectModal(profileId);
+        handleQuickConnect(profileId);
       }
 
       if (actionTarget.dataset.action === 'edit-profile') {
@@ -392,24 +608,22 @@ function wireStaticEvents() {
 
       return;
     }
-
-    if (card) {
-      openConnectModal(card.dataset.profileId);
-    }
   });
 
   elements.forwardList.addEventListener('click', async (event) => {
-    const button = event.target.closest('[data-action="stop-forward"]');
+    const button = event.target.closest('[data-action]');
 
     if (!button) {
       return;
     }
 
-    try {
-      await window.connectApp.stopForward(button.dataset.forwardId);
-      showToast('Проброс остановлен.');
-    } catch (error) {
-      showToast(error.message);
+    if (button.dataset.action === 'open-forward-link') {
+      await openForwardUrl(button.dataset.forwardUrl);
+      return;
+    }
+
+    if (button.dataset.action === 'stop-forward') {
+      await handleStopForward(button.dataset.forwardId);
     }
   });
 
@@ -421,6 +635,45 @@ function wireStaticEvents() {
     }
 
     handleInstallProgram(button.dataset.programId);
+  });
+
+  elements.forwardPresetList.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-action]');
+
+    if (!button) {
+      return;
+    }
+
+    const profileId = button.dataset.forwardProfileId;
+
+    if (button.dataset.action === 'edit-forward-profile') {
+      openForwardModal(getForwardProfileById(profileId));
+      return;
+    }
+
+    if (button.dataset.action === 'delete-forward-profile') {
+      await handleDeleteForwardProfile(profileId);
+      return;
+    }
+
+    if (button.dataset.action === 'start-forward-profile') {
+      try {
+        const result = await window.connectApp.startSavedForward(profileId);
+        showToast(result.message);
+      } catch (error) {
+        showToast(error.message);
+      }
+      return;
+    }
+
+    if (button.dataset.action === 'stop-forward-profile') {
+      await handleStopForward(button.dataset.forwardId);
+      return;
+    }
+
+    if (button.dataset.action === 'open-forward-link') {
+      await openForwardUrl(button.dataset.forwardUrl);
+    }
   });
 
   elements.copyHiddifyButton.addEventListener('click', async () => {
@@ -454,14 +707,21 @@ function wireStaticEvents() {
       showToast(error.message);
     }
   });
+
+  elements.installAllProgramsButton.addEventListener('click', async () => {
+    await handleInstallAllPrograms();
+  });
 }
 
 async function init() {
   elements.addProfileButton = byId('addProfileButton');
   elements.forwardButton = byId('forwardButton');
   elements.programsButton = byId('programsButton');
+  elements.exportConfigButton = byId('exportConfigButton');
+  elements.importConfigButton = byId('importConfigButton');
   elements.profilesGrid = byId('profilesGrid');
   elements.forwardList = byId('forwardList');
+  elements.forwardPresetList = byId('forwardPresetList');
   elements.platformHint = byId('platformHint');
   elements.fxSoundHint = byId('fxSoundHint');
   elements.profileDialogTitle = byId('profileDialogTitle');
@@ -481,6 +741,9 @@ async function init() {
   elements.connectPassword = byId('connectPassword');
   elements.connectRemember = byId('connectRemember');
   elements.forwardForm = byId('forwardForm');
+  elements.forwardDialogTitle = byId('forwardDialogTitle');
+  elements.forwardPresetId = byId('forwardPresetId');
+  elements.forwardName = byId('forwardName');
   elements.forwardProfileSelect = byId('forwardProfileSelect');
   elements.forwardHost = byId('forwardHost');
   elements.forwardSshPort = byId('forwardSshPort');
@@ -490,7 +753,9 @@ async function init() {
   elements.forwardRemotePort = byId('forwardRemotePort');
   elements.forwardPassword = byId('forwardPassword');
   elements.forwardRemember = byId('forwardRemember');
+  elements.forwardSaveToConfig = byId('forwardSaveToConfig');
   elements.programsList = byId('programsList');
+  elements.installAllProgramsButton = byId('installAllProgramsButton');
   elements.copyHiddifyButton = byId('copyHiddifyButton');
   elements.importFxSoundButton = byId('importFxSoundButton');
   elements.installBundledPresetButton = byId('installBundledPresetButton');
@@ -504,6 +769,7 @@ async function init() {
   window.connectApp.onForwardsChanged((forwards) => {
     state.forwards = forwards;
     renderForwards();
+    renderForwardProfiles();
   });
 }
 

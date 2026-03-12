@@ -15,13 +15,14 @@
         <div>
           <p class="eyebrow">ConnectApp</p>
           <h1>Профили удалёнки и утилиты в одном окне</h1>
-          <p class="subtle">Linux через SSH-терминал, Windows через RDP, плюс проброс портов и быстрые установки нужных программ.</p>
         </div>
 
         <div class="topbar__actions">
           <button id="addProfileButton" class="button button--primary">Добавить профиль</button>
           <button id="forwardButton" class="button">Пробросить порт</button>
           <button id="programsButton" class="button">Программы</button>
+          <button id="exportConfigButton" class="button">Сохранить конфиг</button>
+          <button id="importConfigButton" class="button">Загрузить конфиг</button>
         </div>
       </header>
 
@@ -47,6 +48,15 @@
           </div>
 
           <div id="forwardList" class="stack-list"></div>
+
+          <div class="section-head section-head--compact">
+            <div>
+              <p class="section-head__eyebrow">Порт-профили</p>
+              <h2>Сохранённые пробросы</h2>
+            </div>
+          </div>
+
+          <div id="forwardPresetList" class="stack-list"></div>
 
           <div class="hint-card">
             <p class="hint-card__title">FxSound preset</p>
@@ -151,10 +161,17 @@
         <div class="modal__header">
           <div>
             <p class="section-head__eyebrow">SSH tunnel</p>
-            <h3>Проброс порта</h3>
+            <h3 id="forwardDialogTitle">Проброс порта</h3>
           </div>
           <button type="button" class="icon-button" data-close-modal="forwardDialog">Закрыть</button>
         </div>
+
+        <input type="hidden" id="forwardPresetId" />
+
+        <label class="field">
+          <span>Название профиля порта</span>
+          <input id="forwardName" type="text" placeholder="Например, CRM 18080 -> 8080" />
+        </label>
 
         <label class="field">
           <span>Взять данные из профиля</span>
@@ -209,6 +226,11 @@
           <span>Сохранить пароль для этого SSH-логина</span>
         </label>
 
+        <label class="checkbox">
+          <input id="forwardSaveToConfig" type="checkbox" checked />
+          <span>Сохранить этот проброс в конфиг приложения</span>
+        </label>
+
         <div class="modal__footer">
           <button type="button" class="button" data-close-modal="forwardDialog">Отмена</button>
           <button type="submit" class="button button--primary">Создать проброс</button>
@@ -223,7 +245,10 @@
             <p class="section-head__eyebrow">Программы</p>
             <h3>Быстрая установка и портативные архивы</h3>
           </div>
-          <button type="button" class="icon-button" data-close-modal="programsDialog">Закрыть</button>
+          <div class="topbar__actions">
+            <button id="installAllProgramsButton" type="button" class="button button--primary">Установить всё</button>
+            <button type="button" class="icon-button" data-close-modal="programsDialog">Закрыть</button>
+          </div>
         </div>
 
         <div id="programsList" class="program-list"></div>

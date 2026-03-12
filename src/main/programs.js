@@ -378,29 +378,38 @@ class ProgramsService {
     };
   }
 
-  async installProgram(programId) {
-    assertWindowsOnly();
-
+  getProgramOrThrow(programId) {
     const program = PROGRAMS.find((item) => item.id === programId);
 
     if (!program) {
       throw new Error('Неизвестная программа.');
     }
 
+    return program;
+  }
+
+  async installProgramDefinition(program, options = {}) {
+    const openPortableFolder = options.openPortableFolder !== false;
+    const openExecutable = options.openExecutable !== false;
     const targetDir = path.join(this.downloadsDir, program.id);
     const downloadedFile = await downloadFile(program.url, path.join(targetDir, 'download.bin'), `${program.id}.${program.kind}`);
 
     if (program.kind === 'zip') {
       const destination = path.join(this.portableDir, program.extractFolder);
       await extractZip(downloadedFile, destination);
-      const openError = await shell.openPath(destination);
 
-      if (openError) {
-        throw new Error(openError);
+      if (openPortableFolder) {
+        const openError = await shell.openPath(destination);
+
+        if (openError) {
+          throw new Error(openError);
+        }
       }
 
       return {
-        message: `${program.name} распакован. Папка открыта: ${destination}`
+        message: `${program.name} распакован${openPortableFolder ? '. Папка открыта' : ''}.`,
+        type: 'zip',
+        destination
       };
     }
 
@@ -413,18 +422,77 @@ class ProgramsService {
 
     if (!executable) {
       return {
-        message: `${program.name} установлен, но путь запуска найти не удалось.`
+        message: `${program.name} установлен, но путь запуска найти не удалось.`,
+        type: 'exe'
       };
     }
 
-    const openError = await shell.openPath(executable);
+    if (openExecutable) {
+      const openError = await shell.openPath(executable);
 
-    if (openError) {
-      throw new Error(openError);
+      if (openError) {
+        throw new Error(openError);
+      }
     }
 
     return {
-      message: `${program.name} установлен и запущен.`
+      message: `${program.name} установлен${openExecutable ? ' и запущен' : ''}.`,
+      type: 'exe',
+      executable
+    };
+  }
+
+  async installProgram(programId) {
+    assertWindowsOnly();
+    const program = this.getProgramOrThrow(programId);
+    return this.installProgramDefinition(program, {
+      openExecutable: true,
+      openPortableFolder: true
+    });
+  }
+
+  async installAllPrograms() {
+    assertWindowsOnly();
+
+    const installed = [];
+    const failed = [];
+
+    for (const program of PROGRAMS) {
+      try {
+        const result = await this.installProgramDefinition(program, {
+          openExecutable: true,
+          openPortableFolder: true
+        });
+
+        installed.push(result.message);
+      } catch (error) {
+        failed.push(`${program.name}: ${error.message}`);
+      }
+    }
+
+    if (await pathExists(this.bundledFxSoundPresetPath)) {
+      try {
+        const presetResult = await this.installBundledFxSoundPreset();
+        installed.push(`FxSound preset: ${presetResult.message}`);
+      } catch (error) {
+        failed.push(`FxSound preset: ${error.message}`);
+      }
+    }
+
+    if (installed.length === 0 && failed.length > 0) {
+      throw new Error(`Не удалось установить программы. ${failed.join(' | ')}`);
+    }
+
+    let message = `Готово: ${installed.length} действий выполнено.`;
+
+    if (failed.length > 0) {
+      message += ` Ошибки: ${failed.join(' | ')}`;
+    }
+
+    return {
+      installed,
+      failed,
+      message
     };
   }
 

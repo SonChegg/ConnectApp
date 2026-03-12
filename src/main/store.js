@@ -5,6 +5,17 @@ const { safeStorage } = require('electron');
 
 const STORE_VERSION = 1;
 
+function normalizePortValue(value, fallback, options = {}) {
+  const numeric = Number(value);
+  const allowZero = Boolean(options.allowZero);
+
+  if (Number.isInteger(numeric) && numeric >= (allowZero ? 0 : 1) && numeric < 65536) {
+    return numeric;
+  }
+
+  return fallback;
+}
+
 async function ensureJsonFile(filePath, defaultValue) {
   try {
     await fs.access(filePath);
@@ -35,24 +46,28 @@ function normalizeText(value) {
 }
 
 function normalizePort(value, fallback) {
-  const numeric = Number(value);
+  return normalizePortValue(value, fallback);
+}
 
-  if (Number.isInteger(numeric) && numeric > 0 && numeric < 65536) {
-    return numeric;
-  }
-
-  return fallback;
+function normalizeOptionalPort(value, fallback = 0) {
+  return normalizePortValue(value, fallback, { allowZero: true });
 }
 
 class AppStore {
   constructor(baseDir) {
     this.baseDir = baseDir;
     this.profilesFile = path.join(baseDir, 'profiles.json');
+    this.forwardProfilesFile = path.join(baseDir, 'forward-profiles.json');
     this.credentialsFile = path.join(baseDir, 'credentials.json');
   }
 
   async init() {
     await ensureJsonFile(this.profilesFile, {
+      version: STORE_VERSION,
+      profiles: []
+    });
+
+    await ensureJsonFile(this.forwardProfilesFile, {
       version: STORE_VERSION,
       profiles: []
     });
@@ -145,6 +160,68 @@ class AppStore {
     });
   }
 
+  async listForwardProfiles() {
+    const data = await readJson(this.forwardProfilesFile, {
+      version: STORE_VERSION,
+      profiles: []
+    });
+
+    return Array.isArray(data.profiles) ? data.profiles : [];
+  }
+
+  async getForwardProfile(profileId) {
+    const profiles = await this.listForwardProfiles();
+    return profiles.find((profile) => profile.id === profileId) || null;
+  }
+
+  async upsertForwardProfile(input) {
+    const profiles = await this.listForwardProfiles();
+    const now = new Date().toISOString();
+    const profile = {
+      id: input.id || crypto.randomUUID(),
+      name: normalizeText(input.name),
+      host: normalizeText(input.host),
+      sshPort: normalizePort(input.sshPort, 22),
+      username: normalizeText(input.username),
+      localPort: normalizeOptionalPort(input.localPort, 0),
+      remoteHost: normalizeText(input.remoteHost) || '127.0.0.1',
+      remotePort: normalizePort(input.remotePort, 0),
+      note: normalizeText(input.note),
+      updatedAt: now
+    };
+
+    const existingIndex = profiles.findIndex((item) => item.id === profile.id);
+
+    if (existingIndex === -1) {
+      profiles.unshift({
+        ...profile,
+        createdAt: now
+      });
+    } else {
+      profiles[existingIndex] = {
+        ...profiles[existingIndex],
+        ...profile
+      };
+    }
+
+    await writeJson(this.forwardProfilesFile, {
+      version: STORE_VERSION,
+      profiles
+    });
+
+    return profiles.find((item) => item.id === profile.id) || profile;
+  }
+
+  async deleteForwardProfile(profileId) {
+    const profiles = await this.listForwardProfiles();
+    const nextProfiles = profiles.filter((profile) => profile.id !== profileId);
+
+    await writeJson(this.forwardProfilesFile, {
+      version: STORE_VERSION,
+      profiles: nextProfiles
+    });
+  }
+
   makeCredentialKey(descriptor) {
     return [
       descriptor.platform === 'windows' ? 'windows' : 'linux',
@@ -209,6 +286,12 @@ class AppStore {
     };
   }
 
+  async hasCredential(descriptor) {
+    const data = await this.readCredentials();
+    const key = this.makeCredentialKey(descriptor);
+    return Boolean(data.items[key]);
+  }
+
   async saveCredential(descriptor) {
     const data = await this.readCredentials();
     const key = this.makeCredentialKey(descriptor);
@@ -226,10 +309,134 @@ class AppStore {
 
     return key;
   }
+
+  async listCredentials() {
+    const data = await this.readCredentials();
+
+    return Object.values(data.items).map((item) => ({
+      platform: item.platform,
+      host: item.host,
+      port: item.port,
+      username: item.username,
+      password: this.decryptText(item.secret),
+      updatedAt: item.updatedAt
+    }));
+  }
+
+  async exportConfigSnapshot() {
+    return {
+      schema: 'connect-app-config',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      profiles: await this.listProfiles(),
+      forwardProfiles: await this.listForwardProfiles(),
+      credentials: await this.listCredentials()
+    };
+  }
+
+  async importConfigSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') {
+      throw new Error('Файл конфига пустой или повреждён.');
+    }
+
+    const incomingProfiles = Array.isArray(snapshot.profiles) ? snapshot.profiles : [];
+    const incomingForwardProfiles = Array.isArray(snapshot.forwardProfiles) ? snapshot.forwardProfiles : [];
+    const incomingCredentials = Array.isArray(snapshot.credentials) ? snapshot.credentials : [];
+
+    const currentProfiles = await this.listProfiles();
+    const currentForwardProfiles = await this.listForwardProfiles();
+    const currentCredentials = await this.readCredentials();
+
+    const mergedProfiles = new Map(currentProfiles.map((profile) => [profile.id, profile]));
+    const mergedForwardProfiles = new Map(currentForwardProfiles.map((profile) => [profile.id, profile]));
+    const mergedCredentials = { ...currentCredentials.items };
+
+    for (const input of incomingProfiles) {
+      const now = new Date().toISOString();
+      const id = normalizeText(input.id) || crypto.randomUUID();
+
+      mergedProfiles.set(id, {
+        id,
+        name: normalizeText(input.name),
+        platform: input.platform === 'windows' ? 'windows' : 'linux',
+        host: normalizeText(input.host),
+        port: normalizePort(input.port, input.platform === 'windows' ? 3389 : 22),
+        lastUsername: normalizeText(input.lastUsername),
+        note: normalizeText(input.note),
+        createdAt: normalizeText(input.createdAt) || now,
+        updatedAt: normalizeText(input.updatedAt) || now
+      });
+    }
+
+    for (const input of incomingForwardProfiles) {
+      const now = new Date().toISOString();
+      const id = normalizeText(input.id) || crypto.randomUUID();
+
+      mergedForwardProfiles.set(id, {
+        id,
+        name: normalizeText(input.name),
+        host: normalizeText(input.host),
+        sshPort: normalizePort(input.sshPort, 22),
+        username: normalizeText(input.username),
+        localPort: normalizeOptionalPort(input.localPort, 0),
+        remoteHost: normalizeText(input.remoteHost) || '127.0.0.1',
+        remotePort: normalizePort(input.remotePort, 0),
+        note: normalizeText(input.note),
+        createdAt: normalizeText(input.createdAt) || now,
+        updatedAt: normalizeText(input.updatedAt) || now
+      });
+    }
+
+    for (const input of incomingCredentials) {
+      const descriptor = {
+        platform: input.platform === 'windows' ? 'windows' : 'linux',
+        host: normalizeText(input.host),
+        port: normalizePort(input.port, input.platform === 'windows' ? 3389 : 22),
+        username: normalizeText(input.username)
+      };
+
+      if (!descriptor.host || !descriptor.username) {
+        continue;
+      }
+
+      const key = this.makeCredentialKey(descriptor);
+
+      mergedCredentials[key] = {
+        platform: descriptor.platform,
+        host: descriptor.host,
+        port: descriptor.port,
+        username: descriptor.username,
+        secret: this.encryptText(String(input.password || '')),
+        updatedAt: normalizeText(input.updatedAt) || new Date().toISOString()
+      };
+    }
+
+    await writeJson(this.profilesFile, {
+      version: STORE_VERSION,
+      profiles: Array.from(mergedProfiles.values())
+    });
+
+    await writeJson(this.forwardProfilesFile, {
+      version: STORE_VERSION,
+      profiles: Array.from(mergedForwardProfiles.values())
+    });
+
+    await writeJson(this.credentialsFile, {
+      version: STORE_VERSION,
+      items: mergedCredentials
+    });
+
+    return {
+      profilesCount: mergedProfiles.size,
+      forwardProfilesCount: mergedForwardProfiles.size,
+      credentialsCount: Object.keys(mergedCredentials).length
+    };
+  }
 }
 
 module.exports = {
   AppStore,
   normalizePort,
+  normalizeOptionalPort,
   normalizeText
 };
