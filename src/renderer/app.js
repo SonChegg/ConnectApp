@@ -70,8 +70,13 @@ function renderPlatformHint() {
     return;
   }
 
-  elements.platformHint.textContent = 'Dev preview';
-  elements.fxSoundHint.textContent = 'Сейчас открыта не Windows-среда. UI доступен, но RDP, Windows Terminal и тихие установщики можно проверить только на Windows.';
+  if (state.platform === 'darwin') {
+    elements.platformHint.textContent = 'macOS mode';
+  } else {
+    elements.platformHint.textContent = 'Linux mode';
+  }
+
+  elements.fxSoundHint.textContent = 'Linux SSH, встроенный терминал, проброс портов и импорт/экспорт конфига доступны. RDP, FxSound и тихие установщики программ работают только в Windows-сборке.';
 }
 
 function renderProfiles() {
@@ -90,7 +95,14 @@ function renderProfiles() {
   elements.profilesGrid.innerHTML = state.profiles.map((profile) => {
     const badgeClass = profile.platform === 'windows' ? 'badge--windows' : 'badge--linux';
     const badgeText = profile.platform === 'windows' ? 'Windows / RDP' : 'Linux / SSH';
-    const connectLabel = profile.hasSavedCredential ? 'Открыть консоль' : 'Подключиться';
+    const canConnect = profile.platform === 'linux' || state.platform === 'win32';
+    const connectLabel = !canConnect
+      ? 'Только Windows'
+      : profile.platform === 'windows'
+        ? 'Открыть RDP'
+        : profile.hasSavedCredential
+          ? 'Открыть консоль'
+          : 'Подключиться';
 
     return `
       <article class="profile-card" data-profile-id="${escapeHtml(profile.id)}">
@@ -112,7 +124,9 @@ function renderProfiles() {
 
         <div class="profile-card__actions">
           <div class="profile-card__button-row">
-            <button class="button button--primary" data-action="connect-profile" data-profile-id="${escapeHtml(profile.id)}">${connectLabel}</button>
+            <button class="button button--primary" data-action="connect-profile" data-profile-id="${escapeHtml(profile.id)}" ${canConnect ? '' : 'disabled'}>
+              ${connectLabel}
+            </button>
             <button class="button" data-action="edit-profile" data-profile-id="${escapeHtml(profile.id)}">Редактировать</button>
           </div>
         </div>
@@ -207,8 +221,11 @@ function renderForwardProfiles() {
 }
 
 function renderPrograms() {
+  const isWindows = state.platform === 'win32';
+
   elements.programsList.innerHTML = state.programs.items.map((program) => {
     const busy = state.installAllBusy || state.installBusy.has(program.id);
+    const disabled = busy || !isWindows;
 
     return `
       <article class="program-card">
@@ -218,21 +235,24 @@ function renderPrograms() {
 
         <div class="program-card__actions">
           <span class="badge">${program.kind.toUpperCase()}</span>
-          <button class="button button--primary" data-action="install-program" data-program-id="${escapeHtml(program.id)}" ${busy ? 'disabled' : ''}>
-            ${busy ? 'Работает...' : escapeHtml(program.actionLabel)}
+          <button class="button button--primary" data-action="install-program" data-program-id="${escapeHtml(program.id)}" ${disabled ? 'disabled' : ''}>
+            ${busy ? 'Работает...' : isWindows ? escapeHtml(program.actionLabel) : 'Только Windows'}
           </button>
         </div>
       </article>
     `;
   }).join('');
 
-  elements.fxSoundTargetPath.textContent = `Папка назначения: ${state.programs.fxSoundPresetTargetDir}`;
+  elements.fxSoundTargetPath.textContent = isWindows
+    ? `Папка назначения: ${state.programs.fxSoundPresetTargetDir}`
+    : 'FxSound и установщики программ доступны только в Windows-сборке.';
   elements.bundledPresetPath.textContent = state.programs.hasBundledFxSoundPreset
     ? `Встроенный файл найден: ${state.programs.bundledFxSoundPresetPath}`
     : `Если хочешь встроенный пресет в сборке, положи файл сюда: ${state.programs.bundledFxSoundPresetPath}`;
 
-  elements.installBundledPresetButton.disabled = !state.programs.hasBundledFxSoundPreset;
-  elements.installAllProgramsButton.disabled = state.installAllBusy;
+  elements.importFxSoundButton.disabled = !isWindows;
+  elements.installBundledPresetButton.disabled = !isWindows || !state.programs.hasBundledFxSoundPreset;
+  elements.installAllProgramsButton.disabled = state.installAllBusy || !isWindows;
 }
 
 function renderForwardProfileOptions() {

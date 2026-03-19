@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { clipboard, contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('connectApp', {
   bootstrap: () => ipcRenderer.invoke('app:bootstrap'),
@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('connectApp', {
   terminalInput: (sessionId, data) => ipcRenderer.send('terminal:input', { sessionId, data }),
   terminalResize: (sessionId, cols, rows) => ipcRenderer.send('terminal:resize', { sessionId, cols, rows }),
   terminalClose: (sessionId) => ipcRenderer.invoke('terminal:close', sessionId),
+  readClipboardText: () => clipboard.readText(),
+  writeClipboardText: (text) => clipboard.writeText(String(text || '')),
   exportConfig: () => ipcRenderer.invoke('config:export'),
   importConfig: () => ipcRenderer.invoke('config:import'),
   saveProfile: (payload) => ipcRenderer.invoke('profiles:save', payload),

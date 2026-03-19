@@ -4,6 +4,13 @@ const crypto = require('node:crypto');
 const { safeStorage } = require('electron');
 
 const STORE_VERSION = 1;
+const CONFIG_SNAPSHOT_VERSION = 2;
+const PORTABLE_SECRET_VERSION = 1;
+const PORTABLE_SECRET_ALGORITHM = 'aes-256-gcm';
+const PORTABLE_SECRET_KEY = crypto
+  .createHash('sha256')
+  .update('connect-app-config-portable-secret:v1')
+  .digest();
 
 function normalizePortValue(value, fallback, options = {}) {
   const numeric = Number(value);
@@ -259,6 +266,71 @@ class AppStore {
     return buffer.toString('utf8');
   }
 
+  encryptPortableSecret(value) {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv(PORTABLE_SECRET_ALGORITHM, PORTABLE_SECRET_KEY, iv);
+    const encrypted = Buffer.concat([
+      cipher.update(String(value || ''), 'utf8'),
+      cipher.final()
+    ]);
+    const tag = cipher.getAuthTag();
+
+    return {
+      version: PORTABLE_SECRET_VERSION,
+      algorithm: PORTABLE_SECRET_ALGORITHM,
+      iv: iv.toString('base64'),
+      tag: tag.toString('base64'),
+      value: encrypted.toString('base64')
+    };
+  }
+
+  decryptPortableSecret(record) {
+    if (!record || typeof record !== 'object') {
+      return '';
+    }
+
+    if (record.version !== PORTABLE_SECRET_VERSION || record.algorithm !== PORTABLE_SECRET_ALGORITHM) {
+      throw new Error('Неизвестный формат шифрования пароля в конфиге.');
+    }
+
+    try {
+      const iv = Buffer.from(String(record.iv || ''), 'base64');
+      const tag = Buffer.from(String(record.tag || ''), 'base64');
+      const encrypted = Buffer.from(String(record.value || ''), 'base64');
+      const decipher = crypto.createDecipheriv(PORTABLE_SECRET_ALGORITHM, PORTABLE_SECRET_KEY, iv);
+      decipher.setAuthTag(tag);
+
+      return Buffer.concat([
+        decipher.update(encrypted),
+        decipher.final()
+      ]).toString('utf8');
+    } catch {
+      throw new Error('Не удалось расшифровать пароль из конфига.');
+    }
+  }
+
+  resolveImportedCredentialPassword(input) {
+    if (typeof input.password === 'string') {
+      return input.password;
+    }
+
+    if (input.secret && typeof input.secret === 'object') {
+      if (typeof input.secret.version === 'number') {
+        return this.decryptPortableSecret(input.secret);
+      }
+
+      if (typeof input.secret.value === 'string') {
+        return this.decryptText(input.secret);
+      }
+    }
+
+    if (input.password && typeof input.password === 'object' && typeof input.password.version === 'number') {
+      return this.decryptPortableSecret(input.password);
+    }
+
+    return '';
+  }
+
   async readCredentials() {
     return readJson(this.credentialsFile, {
       version: STORE_VERSION,
@@ -324,13 +396,22 @@ class AppStore {
   }
 
   async exportConfigSnapshot() {
+    const credentials = await this.listCredentials();
+
     return {
       schema: 'connect-app-config',
-      version: 1,
+      version: CONFIG_SNAPSHOT_VERSION,
       exportedAt: new Date().toISOString(),
       profiles: await this.listProfiles(),
       forwardProfiles: await this.listForwardProfiles(),
-      credentials: await this.listCredentials()
+      credentials: credentials.map((item) => ({
+        platform: item.platform,
+        host: item.host,
+        port: item.port,
+        username: item.username,
+        secret: this.encryptPortableSecret(item.password),
+        updatedAt: item.updatedAt
+      }))
     };
   }
 
@@ -400,13 +481,14 @@ class AppStore {
       }
 
       const key = this.makeCredentialKey(descriptor);
+      const password = this.resolveImportedCredentialPassword(input);
 
       mergedCredentials[key] = {
         platform: descriptor.platform,
         host: descriptor.host,
         port: descriptor.port,
         username: descriptor.username,
-        secret: this.encryptText(String(input.password || '')),
+        secret: this.encryptText(password),
         updatedAt: normalizeText(input.updatedAt) || new Date().toISOString()
       };
     }

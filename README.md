@@ -25,6 +25,12 @@ npm start
 npm run dist:win
 ```
 
+## Build macOS app
+
+```bash
+npm run dist:mac
+```
+
 ## FxSound preset
 
 If you want a bundled FxSound preset inside the app, place the file here before building:
@@ -41,6 +47,8 @@ At runtime the app copies presets into the current user's roaming folder:
 
 ## Notes
 
-- The UI can open on Linux/macOS for development, but RDP, hidden installers, archive extraction through PowerShell and Windows Terminal are intended for Windows.
+- On macOS and Linux, the app supports Linux SSH profiles, the built-in SSH terminal, local port forwarding, and config import/export.
+- Windows RDP, hidden installers, FxSound preset import and archive extraction through PowerShell remain Windows-only features.
+- In the built-in SSH terminal, selected text can be copied with `Ctrl+C` / `Cmd+C`, and clipboard text can be pasted with `Ctrl+V` / `Cmd+V` or the right mouse button.
 - Credentials are stored per-user in Electron `userData`; when encryption is available, Electron `safeStorage` is used.
-- Exported config files contain saved passwords in portable form so they can be restored on another PC.
+- Exported config files store saved passwords in encrypted portable form instead of plain text.

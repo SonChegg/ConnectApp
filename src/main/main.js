@@ -23,7 +23,7 @@ function ensureNonEmpty(value, fieldName) {
   return normalized;
 }
 
-function ensureSupportedPlatform() {
+function ensureWindowsOnly() {
   if (process.platform !== 'win32') {
     throw new Error('Это действие доступно только в Windows-сборке приложения.');
   }
@@ -156,12 +156,14 @@ async function resolveConnectionPassword(payload) {
 }
 
 async function handleProfileConnect(_event, payload) {
-  ensureSupportedPlatform();
-
   const profile = await store.getProfile(payload.profileId);
 
   if (!profile) {
     throw new Error('Профиль не найден.');
+  }
+
+  if (profile.platform === 'windows' && process.platform !== 'win32') {
+    throw new Error('RDP-подключение доступно только в Windows-сборке приложения.');
   }
 
   const username = ensureNonEmpty(payload.username || profile.lastUsername, 'Логин');
@@ -186,6 +188,7 @@ async function handleProfileConnect(_event, payload) {
   await store.updateProfileUsername(profile.id, username);
 
   if (profile.platform === 'windows') {
+    ensureWindowsOnly();
     return launchWindowsRdp({
       userDataDir: app.getPath('userData'),
       profile,
@@ -291,7 +294,7 @@ async function handleStartSavedForward(_event, forwardProfileId) {
 }
 
 async function handleImportFxSoundPreset() {
-  ensureSupportedPlatform();
+  ensureWindowsOnly();
 
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Выберите .fac файл',
@@ -339,7 +342,7 @@ async function handleExportConfig() {
     profilesCount: snapshot.profiles.length,
     forwardProfilesCount: snapshot.forwardProfiles.length,
     credentialsCount: snapshot.credentials.length,
-    message: 'Конфиг сохранён. В файле есть сохранённые пароли.'
+    message: 'Конфиг сохранён. Сохранённые пароли записаны в зашифрованном виде.'
   };
 }
 

@@ -64,12 +64,102 @@ function fitTerminal() {
   resizeTimer = setTimeout(sendResize, 10);
 }
 
-term.onData((data) => {
-  if (!sessionId) {
+function sendTerminalData(data) {
+  if (!sessionId || typeof data !== 'string' || data.length === 0) {
     return;
   }
 
   window.connectApp.terminalInput(sessionId, data);
+}
+
+async function copySelection() {
+  const selection = term.getSelection();
+
+  if (!selection) {
+    return false;
+  }
+
+  await window.connectApp.writeClipboardText(selection);
+  term.clearSelection();
+  return true;
+}
+
+async function pasteClipboardText() {
+  const text = await window.connectApp.readClipboardText();
+
+  if (!text) {
+    term.focus();
+    return false;
+  }
+
+  sendTerminalData(text);
+  term.focus();
+  return true;
+}
+
+function isPrimaryModifierPressed(event) {
+  return Boolean(event.ctrlKey || event.metaKey);
+}
+
+function hasOnlyPrimaryModifier(event) {
+  return isPrimaryModifierPressed(event) && !event.altKey;
+}
+
+function handleCopyShortcut(event) {
+  if (event.type !== 'keydown' || !hasOnlyPrimaryModifier(event) || event.key.toLowerCase() !== 'c') {
+    return true;
+  }
+
+  if (term.hasSelection()) {
+    copySelection().catch(() => {});
+    return false;
+  }
+
+  sendTerminalData('\u0003');
+  return false;
+}
+
+function handlePasteShortcut(event) {
+  if (event.type !== 'keydown' || !hasOnlyPrimaryModifier(event) || event.key.toLowerCase() !== 'v') {
+    return true;
+  }
+
+  pasteClipboardText().catch(() => {});
+  return false;
+}
+
+function handleNativePaste(event) {
+  const clipboardData = event.clipboardData || window.clipboardData;
+  const text = clipboardData ? clipboardData.getData('text') : '';
+
+  event.preventDefault();
+
+  if (text) {
+    sendTerminalData(text);
+  }
+
+  term.focus();
+}
+
+function handleRightClickPaste(event) {
+  event.preventDefault();
+  pasteClipboardText().catch(() => {});
+}
+
+term.onData((data) => {
+  sendTerminalData(data);
+});
+
+term.attachCustomKeyEventHandler((event) => {
+  if (!handleCopyShortcut(event)) {
+    return false;
+  }
+
+  if (!handlePasteShortcut(event)) {
+    return false;
+  }
+
+  return true;
 });
 
 const detachBootstrap = window.connectApp.onTerminalBootstrap((payload) => {
@@ -94,6 +184,9 @@ window.addEventListener('resize', () => {
   fitTerminal();
 });
 
+terminalViewport.addEventListener('paste', handleNativePaste);
+terminalViewport.addEventListener('contextmenu', handleRightClickPaste);
+
 window.addEventListener('beforeunload', () => {
   clearTimeout(resizeTimer);
 
@@ -104,4 +197,6 @@ window.addEventListener('beforeunload', () => {
   detachBootstrap();
   detachData();
   detachStatus();
+  terminalViewport.removeEventListener('paste', handleNativePaste);
+  terminalViewport.removeEventListener('contextmenu', handleRightClickPaste);
 });
