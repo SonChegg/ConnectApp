@@ -40,6 +40,7 @@ function sanitizeProfileInput(payload) {
     host: ensureNonEmpty(payload.host, 'IP / хост'),
     port: normalizePort(payload.port, defaultPort),
     lastUsername: normalizeText(payload.lastUsername),
+    privateKeyPath: platform === 'windows' ? '' : normalizeText(payload.privateKeyPath),
     note: normalizeText(payload.note)
   };
 }
@@ -84,6 +85,7 @@ function sanitizeForwardProfileInput(payload) {
     host: ensureNonEmpty(payload.host, 'IP / хост'),
     sshPort: normalizePort(payload.sshPort, 22),
     username: ensureNonEmpty(payload.username, 'Логин'),
+    privateKeyPath: normalizeText(payload.privateKeyPath),
     localPort: normalizeOptionalPort(payload.localPort, 0),
     remoteHost: normalizeText(payload.remoteHost) || '127.0.0.1',
     remotePort,
@@ -96,6 +98,7 @@ async function buildBootstrapPayload() {
   const profilesWithCredentialState = await Promise.all(
     profiles.map(async (profile) => ({
       ...profile,
+      hasPrivateKey: Boolean(normalizeText(profile.privateKeyPath)),
       hasSavedCredential: Boolean(profile.lastUsername) && await store.hasCredential({
         platform: profile.platform,
         host: profile.host,
@@ -114,12 +117,59 @@ async function buildBootstrapPayload() {
   };
 }
 
+async function readPrivateKey(privateKeyPath) {
+  const normalizedPath = normalizeText(privateKeyPath);
+
+  if (!normalizedPath) {
+    throw new Error('Выберите файл сертификата/ключа для SSH-входа.');
+  }
+
+  try {
+    return {
+      privateKeyPath: normalizedPath,
+      privateKey: await fs.readFile(normalizedPath)
+    };
+  } catch {
+    throw new Error(`Не удалось прочитать сертификат/ключ: ${normalizedPath}`);
+  }
+}
+
+async function resolveSshAuth(options) {
+  const requestedMethod = normalizeText(options.authMethod);
+  const typedPrivateKeyPath = normalizeText(options.privateKeyPath);
+  const storedPrivateKeyPath = normalizeText(options.storedPrivateKeyPath);
+  const shouldUsePrivateKey = requestedMethod === 'privateKey'
+    || (!requestedMethod && Boolean(typedPrivateKeyPath || storedPrivateKeyPath));
+
+  if (shouldUsePrivateKey) {
+    const keyRecord = await readPrivateKey(typedPrivateKeyPath || storedPrivateKeyPath);
+
+    return {
+      authMethod: 'privateKey',
+      privateKeyPath: keyRecord.privateKeyPath,
+      privateKey: keyRecord.privateKey,
+      passphrase: normalizeText(options.passphrase)
+    };
+  }
+
+  return {
+    authMethod: 'password',
+    password: await resolveConnectionPassword({
+      platform: 'linux',
+      host: options.host,
+      port: options.port,
+      username: options.username,
+      password: options.password
+    })
+  };
+}
+
 async function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 1420,
-    height: 920,
-    minWidth: 1120,
-    minHeight: 760,
+    width: 1280,
+    height: 820,
+    minWidth: 980,
+    minHeight: 660,
     backgroundColor: '#0a1220',
     title: 'ConnectApp',
     webPreferences: {
@@ -167,28 +217,28 @@ async function handleProfileConnect(_event, payload) {
   }
 
   const username = ensureNonEmpty(payload.username || profile.lastUsername, 'Логин');
-  const password = await resolveConnectionPassword({
-    platform: profile.platform,
-    host: profile.host,
-    port: profile.port,
-    username,
-    password: payload.password
-  });
-
-  if (payload.remember && normalizeText(payload.password)) {
-    await store.saveCredential({
-      platform: profile.platform,
-      host: profile.host,
-      port: profile.port,
-      username,
-      password
-    });
-  }
-
   await store.updateProfileUsername(profile.id, username);
 
   if (profile.platform === 'windows') {
     ensureWindowsOnly();
+    const password = await resolveConnectionPassword({
+      platform: profile.platform,
+      host: profile.host,
+      port: profile.port,
+      username,
+      password: payload.password
+    });
+
+    if (payload.remember && normalizeText(payload.password)) {
+      await store.saveCredential({
+        platform: profile.platform,
+        host: profile.host,
+        port: profile.port,
+        username,
+        password
+      });
+    }
+
     return launchWindowsRdp({
       userDataDir: app.getPath('userData'),
       profile,
@@ -198,10 +248,45 @@ async function handleProfileConnect(_event, payload) {
     });
   }
 
-  return sshTerminalManager.openSession({
-    profile,
+  const sshAuth = await resolveSshAuth({
+    authMethod: payload.authMethod,
+    host: profile.host,
+    port: profile.port,
     username,
-    password
+    password: payload.password,
+    privateKeyPath: payload.privateKeyPath,
+    storedPrivateKeyPath: profile.privateKeyPath,
+    passphrase: payload.passphrase
+  });
+
+  if (sshAuth.authMethod === 'password' && payload.remember && normalizeText(payload.password)) {
+    await store.saveCredential({
+      platform: 'linux',
+      host: profile.host,
+      port: profile.port,
+      username,
+      password: sshAuth.password
+    });
+  }
+
+  if (sshAuth.authMethod === 'privateKey' && sshAuth.privateKeyPath !== normalizeText(profile.privateKeyPath)) {
+    await store.upsertProfile({
+      ...profile,
+      lastUsername: username,
+      privateKeyPath: sshAuth.privateKeyPath
+    });
+  }
+
+  return sshTerminalManager.openSession({
+    profile: {
+      ...profile,
+      lastUsername: username,
+      privateKeyPath: sshAuth.authMethod === 'privateKey' ? sshAuth.privateKeyPath : profile.privateKeyPath
+    },
+    username,
+    password: sshAuth.password,
+    privateKey: sshAuth.privateKey,
+    passphrase: sshAuth.passphrase
   });
 }
 
@@ -214,21 +299,24 @@ async function handleStartForward(_event, payload) {
   const remotePort = forwardInput.remotePort;
   const remoteHost = forwardInput.remoteHost;
 
-  const password = await resolveConnectionPassword({
-    platform: 'linux',
+  const sshAuth = await resolveSshAuth({
+    authMethod: payload.authMethod,
     host,
     port: sshPort,
     username,
-    password: payload.password
+    password: payload.password,
+    privateKeyPath: payload.privateKeyPath,
+    storedPrivateKeyPath: '',
+    passphrase: payload.passphrase
   });
 
-  if (payload.remember && normalizeText(payload.password)) {
+  if (sshAuth.authMethod === 'password' && payload.remember && normalizeText(payload.password)) {
     await store.saveCredential({
       platform: 'linux',
       host,
       port: sshPort,
       username,
-      password
+      password: sshAuth.password
     });
   }
 
@@ -246,7 +334,9 @@ async function handleStartForward(_event, payload) {
     host,
     port: sshPort,
     username,
-    password,
+    password: sshAuth.password,
+    privateKey: sshAuth.privateKey,
+    passphrase: sshAuth.passphrase,
     localPort,
     remoteHost,
     remotePort,
@@ -267,12 +357,12 @@ async function handleStartSavedForward(_event, forwardProfileId) {
     throw new Error('Профиль проброса не найден.');
   }
 
-  const password = await resolveConnectionPassword({
-    platform: 'linux',
+  const sshAuth = await resolveSshAuth({
     host: forwardProfile.host,
     port: forwardProfile.sshPort,
     username: forwardProfile.username,
-    password: ''
+    password: '',
+    storedPrivateKeyPath: forwardProfile.privateKeyPath
   });
 
   const forward = await forwardManager.start({
@@ -280,7 +370,9 @@ async function handleStartSavedForward(_event, forwardProfileId) {
     host: forwardProfile.host,
     port: forwardProfile.sshPort,
     username: forwardProfile.username,
-    password,
+    password: sshAuth.password,
+    privateKey: sshAuth.privateKey,
+    passphrase: sshAuth.passphrase,
     localPort: forwardProfile.localPort,
     remoteHost: forwardProfile.remoteHost,
     remotePort: forwardProfile.remotePort,
@@ -314,6 +406,24 @@ async function handleImportFxSoundPreset() {
   }
 
   return programsService.importFxSoundPreset(result.filePaths[0]);
+}
+
+async function handlePickPrivateKey() {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Выберите файл сертификата/ключа',
+    properties: ['openFile']
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return {
+      cancelled: true
+    };
+  }
+
+  return {
+    cancelled: false,
+    path: result.filePaths[0]
+  };
 }
 
 async function handleExportConfig() {
@@ -393,6 +503,7 @@ function registerIpcHandlers() {
   ipcMain.handle('terminal:close', async (_event, sessionId) => ({
     closed: sshTerminalManager.closeSession(sessionId)
   }));
+  ipcMain.handle('app:pick-private-key', async () => handlePickPrivateKey());
   ipcMain.handle('config:export', async () => handleExportConfig());
   ipcMain.handle('config:import', async () => handleImportConfig());
   ipcMain.handle('profiles:save', async (_event, payload) => {

@@ -3,17 +3,30 @@ const { BrowserWindow } = require('electron');
 const { Client } = require('ssh2');
 
 function buildConnectionOptions(options) {
-  return {
+  const connectionOptions = {
     host: options.host,
     port: options.port,
     username: options.username,
-    password: options.password,
     readyTimeout: 20000,
     keepaliveInterval: 10000,
     keepaliveCountMax: 3,
     tryKeyboard: true,
     hostVerifier: () => true
   };
+
+  if (options.password) {
+    connectionOptions.password = options.password;
+  }
+
+  if (options.privateKey) {
+    connectionOptions.privateKey = options.privateKey;
+  }
+
+  if (options.passphrase) {
+    connectionOptions.passphrase = options.passphrase;
+  }
+
+  return connectionOptions;
 }
 
 class SshTerminalWindowManager {
@@ -48,13 +61,13 @@ class SshTerminalWindowManager {
     }
   }
 
-  async openSession({ profile, username, password }) {
+  async openSession({ profile, username, password, privateKey, passphrase }) {
     const sessionId = crypto.randomUUID();
     const window = new BrowserWindow({
-      width: 1180,
-      height: 760,
-      minWidth: 860,
-      minHeight: 520,
+      width: 1100,
+      height: 700,
+      minWidth: 780,
+      minHeight: 460,
       backgroundColor: '#08111f',
       title: `${profile.name} - SSH`,
       webPreferences: {
@@ -96,7 +109,7 @@ class SshTerminalWindowManager {
     });
 
     record.connection.on('keyboard-interactive', (_name, _instructions, _lang, prompts, finish) => {
-      if (Array.isArray(prompts) && prompts.length > 0) {
+      if (password && Array.isArray(prompts) && prompts.length > 0) {
         finish([password]);
         return;
       }
@@ -147,7 +160,9 @@ class SshTerminalWindowManager {
       host: profile.host,
       port: profile.port,
       username,
-      password
+      password,
+      privateKey,
+      passphrase
     }));
 
     return {

@@ -55,6 +55,74 @@ function getProfileById(profileId) {
   return state.profiles.find((profile) => profile.id === profileId) || null;
 }
 
+function getPreferredLinuxAuthMethod(record) {
+  return record && String(record.privateKeyPath || '').trim() ? 'privateKey' : 'password';
+}
+
+function hasQuickAccess(profile) {
+  if (!profile) {
+    return false;
+  }
+
+  if (profile.platform === 'windows') {
+    return Boolean(profile.hasSavedCredential);
+  }
+
+  return Boolean(profile.hasSavedCredential || profile.hasPrivateKey || String(profile.privateKeyPath || '').trim());
+}
+
+function describeProfileAuth(profile) {
+  if (profile.platform === 'linux' && String(profile.privateKeyPath || '').trim()) {
+    return 'сертификат / ключ';
+  }
+
+  if (profile.hasSavedCredential) {
+    return 'сохранённый пароль';
+  }
+
+  return 'ввод вручную';
+}
+
+function setHidden(element, hidden) {
+  element.hidden = Boolean(hidden);
+}
+
+async function pickPrivateKey(targetInput) {
+  const result = await window.connectApp.pickPrivateKey();
+
+  if (result.cancelled) {
+    return;
+  }
+
+  targetInput.value = result.path || '';
+}
+
+function updateProfilePrivateKeyVisibility() {
+  const isLinux = elements.profilePlatform.value === 'linux';
+  setHidden(elements.profilePrivateKeySection, !isLinux);
+}
+
+function updateConnectAuthFields() {
+  const profile = getProfileById(elements.connectProfileId.value);
+  const isLinux = Boolean(profile && profile.platform === 'linux');
+  const usePrivateKey = isLinux && elements.connectAuthMethod.value === 'privateKey';
+
+  setHidden(elements.connectAuthMethodField, !isLinux);
+  setHidden(elements.connectPasswordGroup, isLinux && usePrivateKey);
+  setHidden(elements.connectPrivateKeyGroup, !isLinux || !usePrivateKey);
+
+  if (!isLinux) {
+    elements.connectAuthMethod.value = 'password';
+  }
+}
+
+function updateForwardAuthFields() {
+  const usePrivateKey = elements.forwardAuthMethod.value === 'privateKey';
+
+  setHidden(elements.forwardPasswordGroup, usePrivateKey);
+  setHidden(elements.forwardPrivateKeyGroup, !usePrivateKey);
+}
+
 function getActiveForwardForProfile(profileId) {
   return state.forwards.find((forward) => forward.forwardProfileId === profileId) || null;
 }
@@ -96,11 +164,12 @@ function renderProfiles() {
     const badgeClass = profile.platform === 'windows' ? 'badge--windows' : 'badge--linux';
     const badgeText = profile.platform === 'windows' ? 'Windows / RDP' : 'Linux / SSH';
     const canConnect = profile.platform === 'linux' || state.platform === 'win32';
+    const canQuickOpen = hasQuickAccess(profile) && Boolean(profile.lastUsername);
     const connectLabel = !canConnect
       ? 'Только Windows'
       : profile.platform === 'windows'
         ? 'Открыть RDP'
-        : profile.hasSavedCredential
+        : canQuickOpen
           ? 'Открыть консоль'
           : 'Подключиться';
 
@@ -118,7 +187,8 @@ function renderProfiles() {
 
         <div class="meta-list">
           <span><strong>Логин:</strong> ${escapeHtml(profile.lastUsername || 'не задан')}</span>
-          <span><strong>Пароль:</strong> ${profile.hasSavedCredential ? 'сохранён' : 'не сохранён'}</span>
+          <span><strong>Вход:</strong> ${escapeHtml(describeProfileAuth(profile))}</span>
+          ${profile.privateKeyPath ? `<span class="meta-list__item--break"><strong>Путь к сертификату:</strong> ${escapeHtml(profile.privateKeyPath)}</span>` : ''}
           <span><strong>Заметка:</strong> ${escapeHtml(profile.note || 'нет')}</span>
         </div>
 
@@ -204,6 +274,8 @@ function renderForwardProfiles() {
         <div class="meta-list">
           <span><strong>Маршрут:</strong> 127.0.0.1:${escapeHtml(localPort || 0)} -> ${escapeHtml(profile.remoteHost)}:${escapeHtml(profile.remotePort)}</span>
           <span><strong>Ссылка:</strong> ${isActive ? escapeHtml(openUrl) : 'станет доступна после запуска'}</span>
+          <span><strong>Вход:</strong> ${profile.privateKeyPath ? 'сертификат / ключ' : 'пароль'}</span>
+          ${profile.privateKeyPath ? `<span class="meta-list__item--break"><strong>Путь к сертификату:</strong> ${escapeHtml(profile.privateKeyPath)}</span>` : ''}
           <span><strong>Заметка:</strong> ${escapeHtml(profile.note || 'нет')}</span>
         </div>
 
@@ -274,6 +346,9 @@ function syncForwardProfile(profileId) {
   elements.forwardHost.value = profile.host;
   elements.forwardSshPort.value = String(profile.port || 22);
   elements.forwardUsername.value = profile.lastUsername || '';
+  elements.forwardPrivateKeyPath.value = profile.privateKeyPath || '';
+  elements.forwardAuthMethod.value = getPreferredLinuxAuthMethod(profile);
+  updateForwardAuthFields();
 }
 
 function openProfileModal(profile = null) {
@@ -284,7 +359,9 @@ function openProfileModal(profile = null) {
   elements.profilePort.value = profile ? String(profile.port) : '22';
   elements.profileHost.value = profile ? profile.host : '';
   elements.profileUsername.value = profile ? (profile.lastUsername || '') : '';
+  elements.profilePrivateKeyPath.value = profile ? (profile.privateKeyPath || '') : '';
   elements.profileNote.value = profile ? (profile.note || '') : '';
+  updateProfilePrivateKeyVisibility();
   openDialog('profileDialog');
 }
 
@@ -299,8 +376,12 @@ function openConnectModal(profileId) {
   elements.connectTitle.textContent = profile.name;
   elements.connectDescription.textContent = `${profile.platform === 'windows' ? 'Windows / RDP' : 'Linux / SSH'} • ${profile.host}:${profile.port}`;
   elements.connectUsername.value = profile.lastUsername || '';
+  elements.connectAuthMethod.value = profile.platform === 'linux' ? getPreferredLinuxAuthMethod(profile) : 'password';
   elements.connectPassword.value = '';
+  elements.connectPrivateKeyPath.value = profile.privateKeyPath || '';
+  elements.connectPassphrase.value = '';
   elements.connectRemember.checked = true;
+  updateConnectAuthFields();
   openDialog('connectDialog');
 }
 
@@ -316,14 +397,18 @@ function openForwardModal(profile = null) {
   elements.forwardHost.value = profile ? profile.host : '';
   elements.forwardSshPort.value = profile ? String(profile.sshPort || 22) : '22';
   elements.forwardUsername.value = profile ? profile.username : '';
+  elements.forwardAuthMethod.value = profile ? getPreferredLinuxAuthMethod(profile) : 'password';
   elements.forwardLocalPort.value = profile ? String(profile.localPort || 0) : '';
   elements.forwardRemoteHost.value = profile ? profile.remoteHost : '127.0.0.1';
   elements.forwardRemotePort.value = profile ? String(profile.remotePort || '') : '';
   elements.forwardPassword.value = '';
+  elements.forwardPrivateKeyPath.value = profile ? (profile.privateKeyPath || '') : '';
+  elements.forwardPassphrase.value = '';
   elements.forwardRemember.checked = true;
   elements.forwardSaveToConfig.checked = true;
   elements.forwardProfileSelect.value = '';
   renderForwardProfileOptions();
+  updateForwardAuthFields();
   openDialog('forwardDialog');
 }
 
@@ -357,6 +442,7 @@ async function handleProfileSubmit(event) {
       host: elements.profileHost.value,
       port: elements.profilePort.value,
       lastUsername: elements.profileUsername.value,
+      privateKeyPath: elements.profilePrivateKeyPath.value,
       note: elements.profileNote.value
     });
 
@@ -375,7 +461,7 @@ async function handleQuickConnect(profileId) {
     return;
   }
 
-  if (!profile.hasSavedCredential || !profile.lastUsername) {
+  if (!hasQuickAccess(profile) || !profile.lastUsername) {
     openConnectModal(profileId);
     return;
   }
@@ -384,17 +470,25 @@ async function handleQuickConnect(profileId) {
     const result = await window.connectApp.connectProfile({
       profileId,
       username: profile.lastUsername,
+      authMethod: profile.platform === 'linux' ? getPreferredLinuxAuthMethod(profile) : 'password',
       password: '',
+      privateKeyPath: profile.privateKeyPath || '',
+      passphrase: '',
       remember: false
     });
 
     await refreshAppState();
     showToast(result.message || 'Подключение запущено.');
   } catch (error) {
-    if (error.message.includes('Пароль не найден') || error.message.includes('Логин не заполнено')) {
+    if (
+      error.message.includes('Пароль не найден')
+      || error.message.includes('Логин не заполнено')
+      || error.message.includes('сертификат')
+      || error.message.includes('ключ')
+    ) {
       await refreshAppState();
       openConnectModal(profileId);
-      showToast('Сохранённая учётка недоступна. Введите логин и пароль заново.');
+      showToast('Сохранённые данные недоступны. Проверьте логин, пароль или путь к сертификату.');
       return;
     }
 
@@ -406,14 +500,19 @@ async function handleConnectSubmit(event) {
   event.preventDefault();
 
   try {
+    const profile = getProfileById(elements.connectProfileId.value);
+    const authMethod = profile && profile.platform === 'linux'
+      ? elements.connectAuthMethod.value
+      : 'password';
     const result = await window.connectApp.connectProfile({
       profileId: elements.connectProfileId.value,
       username: elements.connectUsername.value,
-      password: elements.connectPassword.value,
-      remember: elements.connectRemember.checked
+      authMethod,
+      password: authMethod === 'password' ? elements.connectPassword.value : '',
+      privateKeyPath: authMethod === 'privateKey' ? elements.connectPrivateKeyPath.value : '',
+      passphrase: authMethod === 'privateKey' ? elements.connectPassphrase.value : '',
+      remember: authMethod === 'password' && elements.connectRemember.checked
     });
-
-    const profile = getProfileById(elements.connectProfileId.value);
 
     if (profile) {
       profile.lastUsername = elements.connectUsername.value.trim();
@@ -431,6 +530,7 @@ async function handleForwardSubmit(event) {
   event.preventDefault();
 
   try {
+    const authMethod = elements.forwardAuthMethod.value;
     const result = await window.connectApp.startForward({
       id: elements.forwardPresetId.value,
       name: elements.forwardName.value,
@@ -440,8 +540,11 @@ async function handleForwardSubmit(event) {
       localPort: elements.forwardLocalPort.value,
       remoteHost: elements.forwardRemoteHost.value,
       remotePort: elements.forwardRemotePort.value,
-      password: elements.forwardPassword.value,
-      remember: elements.forwardRemember.checked,
+      authMethod,
+      password: authMethod === 'password' ? elements.forwardPassword.value : '',
+      privateKeyPath: authMethod === 'privateKey' ? elements.forwardPrivateKeyPath.value : '',
+      passphrase: authMethod === 'privateKey' ? elements.forwardPassphrase.value : '',
+      remember: authMethod === 'password' && elements.forwardRemember.checked,
       saveToConfig: elements.forwardSaveToConfig.checked
     });
 
@@ -598,10 +701,32 @@ function wireStaticEvents() {
     if (!elements.profilePort.value || elements.profilePort.value === '22' || elements.profilePort.value === '3389') {
       elements.profilePort.value = elements.profilePlatform.value === 'windows' ? '3389' : '22';
     }
+
+    updateProfilePrivateKeyVisibility();
   });
 
   elements.forwardProfileSelect.addEventListener('change', () => {
     syncForwardProfile(elements.forwardProfileSelect.value);
+  });
+
+  elements.connectAuthMethod.addEventListener('change', () => {
+    updateConnectAuthFields();
+  });
+
+  elements.forwardAuthMethod.addEventListener('change', () => {
+    updateForwardAuthFields();
+  });
+
+  elements.profilePickPrivateKeyButton.addEventListener('click', async () => {
+    await pickPrivateKey(elements.profilePrivateKeyPath);
+  });
+
+  elements.connectPickPrivateKeyButton.addEventListener('click', async () => {
+    await pickPrivateKey(elements.connectPrivateKeyPath);
+  });
+
+  elements.forwardPickPrivateKeyButton.addEventListener('click', async () => {
+    await pickPrivateKey(elements.forwardPrivateKeyPath);
   });
 
   elements.profileForm.addEventListener('submit', handleProfileSubmit);
@@ -752,14 +877,24 @@ async function init() {
   elements.profilePort = byId('profilePort');
   elements.profileHost = byId('profileHost');
   elements.profileUsername = byId('profileUsername');
+  elements.profilePrivateKeySection = byId('profilePrivateKeySection');
+  elements.profilePrivateKeyPath = byId('profilePrivateKeyPath');
+  elements.profilePickPrivateKeyButton = byId('profilePickPrivateKeyButton');
   elements.profileNote = byId('profileNote');
   elements.connectForm = byId('connectForm');
   elements.connectProfileId = byId('connectProfileId');
   elements.connectTitle = byId('connectTitle');
   elements.connectDescription = byId('connectDescription');
   elements.connectUsername = byId('connectUsername');
+  elements.connectAuthMethodField = byId('connectAuthMethodField');
+  elements.connectAuthMethod = byId('connectAuthMethod');
+  elements.connectPasswordGroup = byId('connectPasswordGroup');
   elements.connectPassword = byId('connectPassword');
   elements.connectRemember = byId('connectRemember');
+  elements.connectPrivateKeyGroup = byId('connectPrivateKeyGroup');
+  elements.connectPrivateKeyPath = byId('connectPrivateKeyPath');
+  elements.connectPickPrivateKeyButton = byId('connectPickPrivateKeyButton');
+  elements.connectPassphrase = byId('connectPassphrase');
   elements.forwardForm = byId('forwardForm');
   elements.forwardDialogTitle = byId('forwardDialogTitle');
   elements.forwardPresetId = byId('forwardPresetId');
@@ -768,11 +903,17 @@ async function init() {
   elements.forwardHost = byId('forwardHost');
   elements.forwardSshPort = byId('forwardSshPort');
   elements.forwardUsername = byId('forwardUsername');
+  elements.forwardAuthMethod = byId('forwardAuthMethod');
   elements.forwardLocalPort = byId('forwardLocalPort');
   elements.forwardRemoteHost = byId('forwardRemoteHost');
   elements.forwardRemotePort = byId('forwardRemotePort');
+  elements.forwardPasswordGroup = byId('forwardPasswordGroup');
   elements.forwardPassword = byId('forwardPassword');
   elements.forwardRemember = byId('forwardRemember');
+  elements.forwardPrivateKeyGroup = byId('forwardPrivateKeyGroup');
+  elements.forwardPrivateKeyPath = byId('forwardPrivateKeyPath');
+  elements.forwardPickPrivateKeyButton = byId('forwardPickPrivateKeyButton');
+  elements.forwardPassphrase = byId('forwardPassphrase');
   elements.forwardSaveToConfig = byId('forwardSaveToConfig');
   elements.programsList = byId('programsList');
   elements.installAllProgramsButton = byId('installAllProgramsButton');

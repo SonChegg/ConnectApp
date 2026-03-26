@@ -108,6 +108,17 @@
           <input id="profileUsername" type="text" placeholder="Можно оставить пустым" />
         </label>
 
+        <div id="profilePrivateKeySection" class="field-stack">
+          <label class="field">
+            <span>Сертификат / SSH-ключ</span>
+            <div class="input-with-action">
+              <input id="profilePrivateKeyPath" type="text" placeholder="Путь к файлу ключа" />
+              <button id="profilePickPrivateKeyButton" type="button" class="button">Выбрать файл</button>
+            </div>
+          </label>
+          <p class="field-hint">Сохраняется только путь. Сам файл сертификата остаётся отдельно.</p>
+        </div>
+
         <label class="field">
           <span>Заметка</span>
           <textarea id="profileNote" rows="3" placeholder="Необязательно"></textarea>
@@ -139,15 +150,42 @@
           <input id="connectUsername" type="text" required />
         </label>
 
-        <label class="field">
-          <span>Пароль</span>
-          <input id="connectPassword" type="password" placeholder="Можно оставить пустым, если пароль уже сохранён" />
+        <label id="connectAuthMethodField" class="field" hidden>
+          <span>Способ входа</span>
+          <select id="connectAuthMethod">
+            <option value="password">Пароль</option>
+            <option value="privateKey">Сертификат / SSH-ключ</option>
+          </select>
         </label>
 
-        <label class="checkbox">
-          <input id="connectRemember" type="checkbox" checked />
-          <span>Сохранить пароль для следующих подключений</span>
-        </label>
+        <div id="connectPasswordGroup" class="field-stack">
+          <label class="field">
+            <span>Пароль</span>
+            <input id="connectPassword" type="password" placeholder="Можно оставить пустым, если пароль уже сохранён" />
+          </label>
+
+          <label class="checkbox">
+            <input id="connectRemember" type="checkbox" checked />
+            <span>Сохранить пароль для следующих подключений</span>
+          </label>
+        </div>
+
+        <div id="connectPrivateKeyGroup" class="field-stack" hidden>
+          <label class="field">
+            <span>Сертификат / SSH-ключ</span>
+            <div class="input-with-action">
+              <input id="connectPrivateKeyPath" type="text" placeholder="Путь к файлу ключа" />
+              <button id="connectPickPrivateKeyButton" type="button" class="button">Выбрать файл</button>
+            </div>
+          </label>
+
+          <label class="field">
+            <span>Passphrase ключа</span>
+            <input id="connectPassphrase" type="password" placeholder="Необязательно, если ключ без passphrase" />
+          </label>
+
+          <p class="field-hint">В приложении сохраняется только путь к файлу ключа.</p>
+        </div>
 
         <div class="modal__footer">
           <button type="button" class="button" data-close-modal="connectDialog">Отмена</button>
@@ -204,6 +242,14 @@
           </label>
         </div>
 
+        <label class="field">
+          <span>Способ входа</span>
+          <select id="forwardAuthMethod">
+            <option value="password">Пароль</option>
+            <option value="privateKey">Сертификат / SSH-ключ</option>
+          </select>
+        </label>
+
         <div class="field-row">
           <label class="field">
             <span>Удалённый host</span>
@@ -216,15 +262,34 @@
           </label>
         </div>
 
-        <label class="field">
-          <span>Пароль</span>
-          <input id="forwardPassword" type="password" placeholder="Можно оставить пустым, если уже сохранён" />
-        </label>
+        <div id="forwardPasswordGroup" class="field-stack">
+          <label class="field">
+            <span>Пароль</span>
+            <input id="forwardPassword" type="password" placeholder="Можно оставить пустым, если уже сохранён" />
+          </label>
 
-        <label class="checkbox">
-          <input id="forwardRemember" type="checkbox" checked />
-          <span>Сохранить пароль для этого SSH-логина</span>
-        </label>
+          <label class="checkbox">
+            <input id="forwardRemember" type="checkbox" checked />
+            <span>Сохранить пароль для этого SSH-логина</span>
+          </label>
+        </div>
+
+        <div id="forwardPrivateKeyGroup" class="field-stack" hidden>
+          <label class="field">
+            <span>Сертификат / SSH-ключ</span>
+            <div class="input-with-action">
+              <input id="forwardPrivateKeyPath" type="text" placeholder="Путь к файлу ключа" />
+              <button id="forwardPickPrivateKeyButton" type="button" class="button">Выбрать файл</button>
+            </div>
+          </label>
+
+          <label class="field">
+            <span>Passphrase ключа</span>
+            <input id="forwardPassphrase" type="password" placeholder="Необязательно, если ключ без passphrase" />
+          </label>
+
+          <p class="field-hint">При сохранении проброса в конфиг запоминается только путь к файлу ключа.</p>
+        </div>
 
         <label class="checkbox">
           <input id="forwardSaveToConfig" type="checkbox" checked />

@@ -9,8 +9,8 @@
   --accent: #31c48d;
   --accent-strong: #24906a;
   --danger: #ff6b6b;
-  --shadow: 0 24px 80px rgba(2, 10, 20, 0.42);
-  --radius: 24px;
+  --shadow: 0 18px 56px rgba(2, 10, 20, 0.38);
+  --radius: 20px;
   --font-main: "Bahnschrift", "Segoe UI Variable Display", "Trebuchet MS", sans-serif;
 }
 
@@ -22,12 +22,13 @@ body {
   margin: 0;
   min-height: 100vh;
   font-family: var(--font-main);
+  font-size: 14px;
   color: var(--text);
   background:
     radial-gradient(circle at top left, rgba(49, 196, 141, 0.12), transparent 32%),
     radial-gradient(circle at top right, rgba(255, 143, 77, 0.14), transparent 28%),
     linear-gradient(160deg, #07101d 0%, #0b1524 42%, #101d2d 100%);
-  overflow: hidden;
+  overflow: auto;
 }
 
 button,
@@ -39,11 +40,11 @@ select {
 
 .background-glow {
   position: fixed;
-  width: 36rem;
-  height: 36rem;
+  width: 30rem;
+  height: 30rem;
   border-radius: 999px;
-  filter: blur(90px);
-  opacity: 0.32;
+  filter: blur(78px);
+  opacity: 0.26;
   pointer-events: none;
 }
 
@@ -64,9 +65,9 @@ select {
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
   min-height: 100vh;
-  padding: 2rem;
+  padding: 1.15rem;
 }
 
 .topbar,
@@ -81,9 +82,9 @@ select {
 .topbar {
   display: flex;
   justify-content: space-between;
-  gap: 1.5rem;
-  padding: 1.75rem;
-  border-radius: 2rem;
+  gap: 1rem;
+  padding: 1.15rem 1.25rem;
+  border-radius: 1.5rem;
 }
 
 .topbar h1,
@@ -94,8 +95,8 @@ select {
 }
 
 .topbar h1 {
-  max-width: 42rem;
-  font-size: clamp(1.8rem, 2.5vw, 3rem);
+  max-width: 36rem;
+  font-size: clamp(1.45rem, 1.2vw + 1rem, 2.2rem);
 }
 
 .eyebrow,
@@ -103,36 +104,36 @@ select {
   margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  font-size: 0.74rem;
+  font-size: 0.68rem;
   color: #6ad3ad;
 }
 
 .subtle {
-  margin: 0.4rem 0 0;
+  margin: 0.28rem 0 0;
   color: var(--muted);
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
 .topbar__actions,
 .modal__footer,
 .special-card__actions {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.55rem;
   align-items: center;
   flex-wrap: wrap;
 }
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(18rem, 0.95fr);
-  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1.55fr) minmax(16.5rem, 0.92fr);
+  gap: 1rem;
   min-height: 0;
   flex: 1;
 }
 
 .panel {
   border-radius: var(--radius);
-  padding: 1.5rem;
+  padding: 1.1rem;
   overflow: auto;
 }
 
@@ -141,21 +142,21 @@ select {
   justify-content: space-between;
   gap: 1rem;
   align-items: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
 
 .section-head--compact {
-  margin-top: 1.5rem;
-  margin-bottom: 1rem;
+  margin-top: 1rem;
+  margin-bottom: 0.8rem;
 }
 
 .pill {
   margin: 0;
-  padding: 0.55rem 0.9rem;
+  padding: 0.42rem 0.72rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: 0.84rem;
 }
 
 .button,
@@ -168,8 +169,9 @@ select {
 }
 
 .button {
-  padding: 0.8rem 1.15rem;
+  padding: 0.62rem 0.95rem;
   border-radius: 999px;
+  font-size: 0.95rem;
 }
 
 .button:hover,
@@ -199,19 +201,20 @@ select {
 }
 
 .icon-button {
-  padding: 0.7rem 0.95rem;
-  border-radius: 1rem;
+  padding: 0.52rem 0.82rem;
+  border-radius: 0.85rem;
+  font-size: 0.92rem;
 }
 
 .profile-grid,
 .program-list,
 .stack-list {
   display: grid;
-  gap: 1rem;
+  gap: 0.8rem;
 }
 
 .profile-grid {
-  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
 }
 
 .profile-card,
@@ -225,11 +228,11 @@ select {
 }
 
 .profile-card {
-  padding: 1.15rem;
+  padding: 0.95rem;
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
-  min-height: 15rem;
+  gap: 0.7rem;
+  min-height: 12.25rem;
 }
 
 .profile-card__head,
@@ -262,9 +265,9 @@ select {
   display: inline-flex;
   align-items: center;
   width: fit-content;
-  padding: 0.35rem 0.7rem;
+  padding: 0.28rem 0.58rem;
   border-radius: 999px;
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   background: rgba(255, 255, 255, 0.08);
@@ -280,9 +283,9 @@ select {
 
 .meta-list {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.35rem;
   color: var(--muted);
-  font-size: 0.95rem;
+  font-size: 0.86rem;
 }
 
 .meta-list strong {
@@ -290,21 +293,25 @@ select {
   font-weight: 600;
 }
 
+.meta-list__item--break {
+  word-break: break-word;
+}
+
 .hint-card,
 .special-card {
-  padding: 1rem 1.1rem;
+  padding: 0.9rem 1rem;
 }
 
 .hint-card__title {
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 700;
 }
 
 .forward-card {
-  padding: 1rem;
+  padding: 0.9rem;
   display: grid;
-  gap: 0.75rem;
+  gap: 0.65rem;
 }
 
 .forward-card__head {
@@ -312,16 +319,16 @@ select {
 }
 
 .program-card {
-  padding: 1rem 1.1rem;
+  padding: 0.9rem 1rem;
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.8rem;
   align-items: flex-start;
 }
 
 .program-card__actions {
   display: flex;
-  gap: 0.6rem;
+  gap: 0.5rem;
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -333,10 +340,10 @@ select {
 }
 
 .special-card {
-  margin-top: 1rem;
+  margin-top: 0.85rem;
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.85rem;
   align-items: center;
 }
 
@@ -348,29 +355,52 @@ select {
 .field,
 .checkbox {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.38rem;
 }
 
 .field span {
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: 0.84rem;
 }
 
 .field-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.9rem;
+  gap: 0.75rem;
+}
+
+.field-stack {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.field-hint {
+  margin: -0.12rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.input-with-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.input-with-action .button {
+  white-space: nowrap;
 }
 
 input,
 textarea,
 select {
   width: 100%;
-  border-radius: 1rem;
+  border-radius: 0.85rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.06);
   color: var(--text);
-  padding: 0.85rem 1rem;
+  padding: 0.68rem 0.82rem;
   outline: none;
 }
 
@@ -397,14 +427,14 @@ select:focus {
 }
 
 .modal {
-  width: min(100%, 42rem);
+  width: min(100%, 38rem);
   border: 0;
   background: transparent;
   padding: 0;
 }
 
 .modal--wide {
-  width: min(100%, 58rem);
+  width: min(100%, 52rem);
 }
 
 .modal::backdrop {
@@ -414,9 +444,9 @@ select:focus {
 
 .modal__content {
   display: grid;
-  gap: 1rem;
-  border-radius: 2rem;
-  padding: 1.5rem;
+  gap: 0.85rem;
+  border-radius: 1.5rem;
+  padding: 1.1rem;
 }
 
 .modal__header {
@@ -428,11 +458,11 @@ select:focus {
 
 .toast {
   position: fixed;
-  right: 1.5rem;
-  bottom: 1.5rem;
+  right: 1rem;
+  bottom: 1rem;
   max-width: 28rem;
-  padding: 0.9rem 1rem;
-  border-radius: 1rem;
+  padding: 0.78rem 0.9rem;
+  border-radius: 0.9rem;
   background: rgba(11, 23, 36, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.15);
   box-shadow: var(--shadow);
@@ -442,7 +472,7 @@ select:focus {
 .empty-state {
   display: grid;
   place-items: center;
-  padding: 2.5rem 1.5rem;
+  padding: 1.8rem 1rem;
   border-radius: 1.5rem;
   border: 1px dashed rgba(255, 255, 255, 0.16);
   color: var(--muted);
@@ -450,10 +480,6 @@ select:focus {
 }
 
 @media (max-width: 1080px) {
-  body {
-    overflow: auto;
-  }
-
   .app-shell {
     padding: 1rem;
   }
@@ -461,6 +487,7 @@ select:focus {
   .topbar,
   .layout,
   .field-row,
+  .input-with-action,
   .special-card,
   .program-card {
     grid-template-columns: 1fr;

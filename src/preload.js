@@ -3,6 +3,7 @@ const { clipboard, contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('connectApp', {
   bootstrap: () => ipcRenderer.invoke('app:bootstrap'),
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
+  pickPrivateKey: () => ipcRenderer.invoke('app:pick-private-key'),
   terminalInput: (sessionId, data) => ipcRenderer.send('terminal:input', { sessionId, data }),
   terminalResize: (sessionId, cols, rows) => ipcRenderer.send('terminal:resize', { sessionId, cols, rows }),
   terminalClose: (sessionId) => ipcRenderer.invoke('terminal:close', sessionId),

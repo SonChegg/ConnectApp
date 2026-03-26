@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const { safeStorage } = require('electron');
 
 const STORE_VERSION = 1;
-const CONFIG_SNAPSHOT_VERSION = 2;
+const CONFIG_SNAPSHOT_VERSION = 3;
 const PORTABLE_SECRET_VERSION = 1;
 const PORTABLE_SECRET_ALGORITHM = 'aes-256-gcm';
 const PORTABLE_SECRET_KEY = crypto
@@ -109,6 +109,7 @@ class AppStore {
       host: normalizeText(input.host),
       port: normalizePort(input.port, input.platform === 'windows' ? 3389 : 22),
       lastUsername: normalizeText(input.lastUsername),
+      privateKeyPath: input.platform === 'windows' ? '' : normalizeText(input.privateKeyPath),
       note: normalizeText(input.note),
       updatedAt: now
     };
@@ -190,6 +191,7 @@ class AppStore {
       host: normalizeText(input.host),
       sshPort: normalizePort(input.sshPort, 22),
       username: normalizeText(input.username),
+      privateKeyPath: normalizeText(input.privateKeyPath),
       localPort: normalizeOptionalPort(input.localPort, 0),
       remoteHost: normalizeText(input.remoteHost) || '127.0.0.1',
       remotePort: normalizePort(input.remotePort, 0),
@@ -443,6 +445,7 @@ class AppStore {
         host: normalizeText(input.host),
         port: normalizePort(input.port, input.platform === 'windows' ? 3389 : 22),
         lastUsername: normalizeText(input.lastUsername),
+        privateKeyPath: input.platform === 'windows' ? '' : normalizeText(input.privateKeyPath),
         note: normalizeText(input.note),
         createdAt: normalizeText(input.createdAt) || now,
         updatedAt: normalizeText(input.updatedAt) || now
@@ -459,6 +462,7 @@ class AppStore {
         host: normalizeText(input.host),
         sshPort: normalizePort(input.sshPort, 22),
         username: normalizeText(input.username),
+        privateKeyPath: normalizeText(input.privateKeyPath),
         localPort: normalizeOptionalPort(input.localPort, 0),
         remoteHost: normalizeText(input.remoteHost) || '127.0.0.1',
         remotePort: normalizePort(input.remotePort, 0),

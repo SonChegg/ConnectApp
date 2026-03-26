@@ -3,17 +3,30 @@ const crypto = require('node:crypto');
 const { Client } = require('ssh2');
 
 function buildConnectionOptions(options) {
-  return {
+  const connectionOptions = {
     host: options.host,
     port: options.port,
     username: options.username,
-    password: options.password,
     readyTimeout: 20000,
     keepaliveInterval: 10000,
     keepaliveCountMax: 3,
     tryKeyboard: true,
     hostVerifier: () => true
   };
+
+  if (options.password) {
+    connectionOptions.password = options.password;
+  }
+
+  if (options.privateKey) {
+    connectionOptions.privateKey = options.privateKey;
+  }
+
+  if (options.passphrase) {
+    connectionOptions.passphrase = options.passphrase;
+  }
+
+  return connectionOptions;
 }
 
 function destroyActiveChannels(channels) {
@@ -81,7 +94,7 @@ class PortForwardManager {
       };
 
       connection.on('keyboard-interactive', (_name, _instructions, _lang, prompts, finish) => {
-        if (Array.isArray(prompts) && prompts.length > 0) {
+        if (options.password && Array.isArray(prompts) && prompts.length > 0) {
           finish([options.password]);
           return;
         }
