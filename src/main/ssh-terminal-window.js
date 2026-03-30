@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const { BrowserWindow } = require('electron');
 const { Client } = require('ssh2');
+const { getReconnectPlan } = require('./ssh-reconnect-policy');
 
 function buildConnectionOptions(options) {
   const connectionOptions = {
@@ -44,21 +45,214 @@ class SshTerminalWindowManager {
     record.window.webContents.send(channel, payload);
   }
 
-  markEnded(record, status, message) {
+  sendStatus(record, state, message) {
+    if (record.disposed) {
+      return;
+    }
+
+    this.send(record, 'terminal:status', {
+      state,
+      message
+    });
+  }
+
+  writeTerminalMessage(record, message) {
+    if (!message) {
+      return;
+    }
+
+    this.send(record, 'terminal:data', `\r\n${message}\r\n`);
+  }
+
+  finalize(record, status, message) {
     if (record.ended) {
       return;
     }
 
-    record.ended = true;
+    clearTimeout(record.reconnectTimer);
     record.shell = null;
-    this.send(record, 'terminal:status', {
-      state: status,
-      message
+    this.sendStatus(record, status, message);
+    this.writeTerminalMessage(record, message);
+    record.ended = true;
+  }
+
+  cleanupConnection(record) {
+    if (record.shell) {
+      try {
+        record.shell.end();
+      } catch {}
+    }
+
+    record.shell = null;
+
+    if (record.connection) {
+      try {
+        record.connection.end();
+      } catch {}
+    }
+
+    record.connection = null;
+  }
+
+  handleUnexpectedDisconnect(record, generation, message) {
+    if (record.disposed || record.ended || record.disconnectHandledGeneration === generation) {
+      return;
+    }
+
+    record.disconnectHandledGeneration = generation;
+    this.cleanupConnection(record);
+
+    const plan = getReconnectPlan(record.reconnectAttempt || 0);
+
+    if (!plan) {
+      this.finalize(record, 'ended', 'Не удалось восстановить SSH-соединение. Сессия отключена.');
+      return;
+    }
+
+    record.reconnectAttempt = plan.attemptNumber;
+    const reconnectMessage = `${message} Переподключение ${plan.attemptNumber}/${plan.totalAttempts}${plan.delayMs > 0 ? ` через ${Math.round(plan.delayMs / 1000)} сек.` : ' сейчас.'}`;
+    this.sendStatus(record, 'reconnecting', reconnectMessage);
+    this.writeTerminalMessage(record, reconnectMessage);
+
+    clearTimeout(record.reconnectTimer);
+    record.reconnectTimer = setTimeout(() => {
+      this.connectRecord(record);
+    }, plan.delayMs);
+  }
+
+  connectRecord(record) {
+    if (record.disposed || record.ended) {
+      return;
+    }
+
+    const generation = (record.generation || 0) + 1;
+    const connection = new Client();
+    record.generation = generation;
+    record.connection = connection;
+    record.disconnectHandledGeneration = 0;
+    record.remoteShellExited = false;
+
+    if (record.hasEverConnected) {
+      this.sendStatus(
+        record,
+        'reconnecting',
+        `Повторное подключение к ${record.username}@${record.profile.host}`
+      );
+    } else {
+      this.sendStatus(
+        record,
+        'connecting',
+        `Подключение к ${record.username}@${record.profile.host}`
+      );
+    }
+
+    connection.on('keyboard-interactive', (_name, _instructions, _lang, prompts, finish) => {
+      if (record.password && Array.isArray(prompts) && prompts.length > 0) {
+        finish([record.password]);
+        return;
+      }
+
+      finish([]);
     });
 
-    if (message) {
-      this.send(record, 'terminal:data', `\r\n${message}\r\n`);
-    }
+    connection.on('error', (error) => {
+      if (record.disposed || record.ended || record.generation !== generation) {
+        return;
+      }
+
+      this.handleUnexpectedDisconnect(record, generation, `Ошибка SSH: ${error.message}`);
+    });
+
+    connection.on('close', () => {
+      if (record.disposed || record.ended || record.generation !== generation) {
+        return;
+      }
+
+      if (record.remoteShellExited) {
+        this.finalize(record, 'ended', 'Сессия завершена.');
+        return;
+      }
+
+      this.handleUnexpectedDisconnect(record, generation, 'SSH-соединение потеряно.');
+    });
+
+    connection.on('ready', () => {
+      if (record.disposed || record.ended || record.generation !== generation) {
+        return;
+      }
+
+      const restoredConnection = record.hasEverConnected;
+      record.hasEverConnected = true;
+      record.reconnectAttempt = 0;
+      clearTimeout(record.reconnectTimer);
+      this.sendStatus(record, 'connected', `Подключено к ${record.username}@${record.profile.host}`);
+
+      connection.shell({
+        term: 'xterm-256color',
+        cols: record.cols,
+        rows: record.rows
+      }, (error, stream) => {
+        if (record.disposed || record.ended || record.generation !== generation) {
+          if (stream) {
+            try {
+              stream.end();
+            } catch {}
+          }
+          return;
+        }
+
+        if (error) {
+          this.handleUnexpectedDisconnect(record, generation, `Не удалось открыть shell: ${error.message}`);
+          return;
+        }
+
+        record.shell = stream;
+        stream.setEncoding('utf8');
+
+        stream.on('data', (chunk) => {
+          this.send(record, 'terminal:data', chunk);
+        });
+
+        stream.on('exit', () => {
+          record.remoteShellExited = true;
+        });
+
+        stream.on('close', () => {
+          if (record.disposed || record.ended || record.generation !== generation) {
+            return;
+          }
+
+          record.shell = null;
+
+          if (record.remoteShellExited) {
+            this.finalize(record, 'ended', 'Сессия завершена.');
+            try {
+              connection.end();
+            } catch {}
+            return;
+          }
+
+          this.handleUnexpectedDisconnect(record, generation, 'SSH-сессия оборвалась.');
+        });
+
+        this.writeTerminalMessage(
+          record,
+          restoredConnection
+            ? `Соединение восстановлено: ${record.username}@${record.profile.host}`
+            : `Подключено к ${record.username}@${record.profile.host}. Для выхода используйте команду exit.`
+        );
+        this.send(record, 'terminal:data', '\r\n');
+      });
+    });
+
+    connection.connect(buildConnectionOptions({
+      host: record.profile.host,
+      port: record.profile.port,
+      username: record.username,
+      password: record.password,
+      privateKey: record.privateKey,
+      passphrase: record.passphrase
+    }));
   }
 
   async openSession({ profile, username, password, privateKey, passphrase }) {
@@ -83,10 +277,23 @@ class SshTerminalWindowManager {
     const record = {
       id: sessionId,
       window,
-      connection: new Client(),
+      connection: null,
       shell: null,
       ended: false,
-      disposed: false
+      disposed: false,
+      reconnectTimer: null,
+      reconnectAttempt: 0,
+      disconnectHandledGeneration: 0,
+      generation: 0,
+      remoteShellExited: false,
+      hasEverConnected: false,
+      profile,
+      username,
+      password,
+      privateKey,
+      passphrase,
+      cols: 120,
+      rows: 40
     };
 
     this.sessions.set(sessionId, record);
@@ -103,67 +310,7 @@ class SshTerminalWindowManager {
       subtitle: `${username}@${profile.host}:${profile.port}`
     });
 
-    this.send(record, 'terminal:status', {
-      state: 'connecting',
-      message: `Подключение к ${username}@${profile.host}`
-    });
-
-    record.connection.on('keyboard-interactive', (_name, _instructions, _lang, prompts, finish) => {
-      if (password && Array.isArray(prompts) && prompts.length > 0) {
-        finish([password]);
-        return;
-      }
-
-      finish([]);
-    });
-
-    record.connection.on('error', (error) => {
-      this.markEnded(record, 'error', `Ошибка SSH: ${error.message}`);
-    });
-
-    record.connection.on('close', () => {
-      this.markEnded(record, 'ended', 'Сессия завершена.');
-    });
-
-    record.connection.on('ready', () => {
-      this.send(record, 'terminal:status', {
-        state: 'connected',
-        message: `Подключено к ${username}@${profile.host}`
-      });
-
-      record.connection.shell({
-        term: 'xterm-256color',
-        cols: 120,
-        rows: 40
-      }, (error, stream) => {
-        if (error) {
-          this.markEnded(record, 'error', `Не удалось открыть shell: ${error.message}`);
-          return;
-        }
-
-        record.shell = stream;
-        stream.setEncoding('utf8');
-
-        stream.on('data', (chunk) => {
-          this.send(record, 'terminal:data', chunk);
-        });
-
-        stream.on('close', () => {
-          this.markEnded(record, 'ended', 'Сессия завершена.');
-        });
-
-        this.send(record, 'terminal:data', `Подключено к ${username}@${profile.host}. Для выхода используйте команду exit.\r\n\r\n`);
-      });
-    });
-
-    record.connection.connect(buildConnectionOptions({
-      host: profile.host,
-      port: profile.port,
-      username,
-      password,
-      privateKey,
-      passphrase
-    }));
+    this.connectRecord(record);
 
     return {
       mode: 'ssh',
@@ -185,12 +332,19 @@ class SshTerminalWindowManager {
   handleResize(sessionId, cols, rows) {
     const record = this.sessions.get(sessionId);
 
-    if (!record || !record.shell) {
+    if (!record) {
       return false;
     }
 
     const nextCols = Math.max(2, Number(cols) || 120);
     const nextRows = Math.max(1, Number(rows) || 40);
+    record.cols = nextCols;
+    record.rows = nextRows;
+
+    if (!record.shell) {
+      return false;
+    }
+
     record.shell.setWindow(nextRows, nextCols, 0, 0);
     return true;
   }
@@ -203,17 +357,9 @@ class SshTerminalWindowManager {
     }
 
     record.disposed = true;
+    clearTimeout(record.reconnectTimer);
     this.sessions.delete(sessionId);
-
-    if (record.shell) {
-      try {
-        record.shell.end();
-      } catch {}
-    }
-
-    try {
-      record.connection.end();
-    } catch {}
+    this.cleanupConnection(record);
 
     if (record.window && !record.window.isDestroyed()) {
       record.window.destroy();

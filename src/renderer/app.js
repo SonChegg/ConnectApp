@@ -15,6 +15,8 @@ const state = {
 
 const elements = {};
 let toastTimer = null;
+const customSelects = new Map();
+let activeCustomSelect = null;
 
 function byId(id) {
   return document.getElementById(id);
@@ -27,6 +29,16 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function basenameFromPath(value) {
+  const normalized = String(value || '').trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized.split(/[/\\]/).pop() || normalized;
 }
 
 function showToast(message) {
@@ -42,12 +54,15 @@ function showToast(message) {
 function closeDialog(dialogId) {
   const dialog = byId(dialogId);
 
+  closeAllCustomSelects();
+
   if (dialog.open) {
     dialog.close();
   }
 }
 
 function openDialog(dialogId) {
+  closeAllCustomSelects();
   byId(dialogId).showModal();
 }
 
@@ -87,6 +102,210 @@ function setHidden(element, hidden) {
   element.hidden = Boolean(hidden);
 }
 
+function closeCustomSelect(registry) {
+  if (!registry) {
+    return;
+  }
+
+  registry.wrapper.classList.remove('is-open');
+  registry.trigger.setAttribute('aria-expanded', 'false');
+
+  if (activeCustomSelect === registry) {
+    activeCustomSelect = null;
+  }
+}
+
+function closeAllCustomSelects(exceptRegistry = null) {
+  customSelects.forEach((registry) => {
+    if (registry !== exceptRegistry) {
+      closeCustomSelect(registry);
+    }
+  });
+}
+
+function focusCustomSelectOption(registry, optionIndex) {
+  const options = Array.from(registry.panel.querySelectorAll('.custom-select__option:not(:disabled)'));
+
+  if (options.length === 0) {
+    registry.trigger.focus();
+    return;
+  }
+
+  const preferred = options.find((option) => Number(option.dataset.optionIndex) === optionIndex);
+  (preferred || options[0]).focus();
+}
+
+function openCustomSelect(registry) {
+  if (!registry || registry.select.disabled) {
+    return;
+  }
+
+  closeAllCustomSelects(registry);
+  registry.wrapper.classList.add('is-open');
+  registry.trigger.setAttribute('aria-expanded', 'true');
+  activeCustomSelect = registry;
+  focusCustomSelectOption(registry, registry.select.selectedIndex);
+}
+
+function syncCustomSelect(select) {
+  const registry = customSelects.get(select);
+
+  if (!registry) {
+    return;
+  }
+
+  const placeholder = select.dataset.selectPlaceholder || 'Выбери значение';
+  const maxHeight = select.dataset.selectMaxHeight || '15rem';
+  const selectedOption = select.options[select.selectedIndex] || null;
+  const selectedText = selectedOption ? selectedOption.textContent.trim() : placeholder;
+
+  registry.wrapper.style.setProperty('--custom-select-max-height', maxHeight);
+  registry.trigger.querySelector('.custom-select__label').textContent = selectedText || placeholder;
+  registry.trigger.disabled = select.disabled;
+  registry.wrapper.classList.toggle('is-disabled', select.disabled);
+  registry.wrapper.classList.toggle('has-value', Boolean(selectedOption && selectedOption.value !== ''));
+
+  registry.panel.innerHTML = Array.from(select.options).map((option, index) => `
+    <button
+      type="button"
+      class="custom-select__option${option.selected ? ' is-selected' : ''}"
+      data-option-index="${index}"
+      ${option.disabled ? 'disabled' : ''}
+    >
+      ${escapeHtml(option.textContent.trim())}
+    </button>
+  `).join('');
+
+  registry.panel.querySelectorAll('.custom-select__option').forEach((button) => {
+    const optionIndex = Number(button.dataset.optionIndex);
+
+    button.addEventListener('click', () => {
+      const option = select.options[optionIndex];
+
+      if (!option || option.disabled) {
+        return;
+      }
+
+      select.value = option.value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      closeCustomSelect(registry);
+      registry.trigger.focus();
+    });
+
+    button.addEventListener('keydown', (event) => {
+      const enabledOptions = Array.from(registry.panel.querySelectorAll('.custom-select__option:not(:disabled)'));
+      const currentIndex = enabledOptions.indexOf(button);
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        const next = enabledOptions[currentIndex + 1] || enabledOptions[0];
+        next?.focus();
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        const previous = enabledOptions[currentIndex - 1] || enabledOptions[enabledOptions.length - 1];
+        previous?.focus();
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeCustomSelect(registry);
+        registry.trigger.focus();
+      }
+    });
+  });
+
+  if (select.disabled) {
+    closeCustomSelect(registry);
+  }
+}
+
+function enhanceSelect(select) {
+  if (!select || customSelects.has(select)) {
+    return;
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'custom-select';
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'custom-select__trigger';
+  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-expanded', 'false');
+  trigger.innerHTML = '<span class="custom-select__label"></span><span class="custom-select__chevron" aria-hidden="true"></span>';
+
+  const panel = document.createElement('div');
+  panel.className = 'custom-select__panel';
+  panel.setAttribute('role', 'listbox');
+
+  select.classList.add('custom-select__native');
+  select.parentNode.insertBefore(wrapper, select);
+  wrapper.appendChild(select);
+  wrapper.appendChild(trigger);
+  wrapper.appendChild(panel);
+
+  const registry = {
+    select,
+    wrapper,
+    trigger,
+    panel
+  };
+
+  customSelects.set(select, registry);
+
+  trigger.addEventListener('click', () => {
+    if (wrapper.classList.contains('is-open')) {
+      closeCustomSelect(registry);
+      return;
+    }
+
+    openCustomSelect(registry);
+  });
+
+  trigger.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openCustomSelect(registry);
+    }
+
+    if (event.key === 'Escape') {
+      closeCustomSelect(registry);
+    }
+  });
+
+  select.addEventListener('change', () => {
+    syncCustomSelect(select);
+  });
+
+  const observer = new MutationObserver(() => {
+    syncCustomSelect(select);
+  });
+
+  observer.observe(select, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['disabled']
+  });
+
+  registry.observer = observer;
+  syncCustomSelect(select);
+}
+
+function initializeCustomSelects() {
+  document.querySelectorAll('select').forEach((select) => {
+    enhanceSelect(select);
+  });
+}
+
+function syncAllCustomSelects() {
+  customSelects.forEach((registry) => {
+    syncCustomSelect(registry.select);
+  });
+}
+
 async function pickPrivateKey(targetInput) {
   const result = await window.connectApp.pickPrivateKey();
 
@@ -114,6 +333,8 @@ function updateConnectAuthFields() {
   if (!isLinux) {
     elements.connectAuthMethod.value = 'password';
   }
+
+  syncCustomSelect(elements.connectAuthMethod);
 }
 
 function updateForwardAuthFields() {
@@ -129,6 +350,32 @@ function getActiveForwardForProfile(profileId) {
 
 function buildForwardUrl(localPort) {
   return `http://127.0.0.1:${localPort}`;
+}
+
+function getForwardStateLabel(forward) {
+  if (!forward) {
+    return 'Остановлен';
+  }
+
+  return forward.status === 'reconnecting' ? 'Переподключение' : 'Активен';
+}
+
+function getForwardStateClass(forward) {
+  if (!forward) {
+    return '';
+  }
+
+  return forward.status === 'reconnecting' ? 'badge--warning' : 'badge--linux';
+}
+
+function getForwardStatusText(forward) {
+  if (!forward) {
+    return 'Остановлен.';
+  }
+
+  return forward.statusMessage || (forward.status === 'reconnecting'
+    ? 'Идёт восстановление туннеля.'
+    : 'Туннель активен.');
 }
 
 function renderPlatformHint() {
@@ -227,16 +474,21 @@ function renderForwards() {
           <h3>${escapeHtml(forward.name)}</h3>
           <p class="subtle">${escapeHtml(forward.username)}@${escapeHtml(forward.host)}:${escapeHtml(forward.sshPort)}</p>
         </div>
+        <span class="badge ${getForwardStateClass(forward)}">${getForwardStateLabel(forward)}</span>
+      </div>
+
+      <div class="forward-card__head">
         <button class="button" data-action="stop-forward" data-forward-id="${escapeHtml(forward.id)}">Остановить</button>
       </div>
 
       <div class="meta-list">
         <span><strong>Локально:</strong> 127.0.0.1:${escapeHtml(forward.localPort)}</span>
         <span><strong>Удалённо:</strong> ${escapeHtml(forward.remoteHost)}:${escapeHtml(forward.remotePort)}</span>
+        <span><strong>Статус:</strong> ${escapeHtml(getForwardStatusText(forward))}</span>
       </div>
 
       <div class="profile-card__button-row">
-        <button class="button" data-action="open-forward-link" data-forward-url="${escapeHtml(buildForwardUrl(forward.localPort))}">Открыть в браузере</button>
+        ${forward.status === 'active' ? `<button class="button" data-action="open-forward-link" data-forward-url="${escapeHtml(buildForwardUrl(forward.localPort))}">Открыть в браузере</button>` : ''}
       </div>
     </article>
   `).join('');
@@ -260,6 +512,7 @@ function renderForwardProfiles() {
     const isActive = Boolean(activeForward);
     const localPort = isActive ? activeForward.localPort : profile.localPort;
     const openUrl = localPort ? buildForwardUrl(localPort) : '';
+    const canOpenForward = Boolean(isActive && activeForward.status === 'active');
 
     return `
       <article class="forward-card">
@@ -268,12 +521,13 @@ function renderForwardProfiles() {
             <h3>${escapeHtml(profile.name)}</h3>
             <p class="subtle">${escapeHtml(profile.username)}@${escapeHtml(profile.host)}:${escapeHtml(profile.sshPort)}</p>
           </div>
-          <span class="badge ${isActive ? 'badge--linux' : ''}">${isActive ? 'Активен' : 'Остановлен'}</span>
+          <span class="badge ${getForwardStateClass(activeForward)}">${getForwardStateLabel(activeForward)}</span>
         </div>
 
         <div class="meta-list">
           <span><strong>Маршрут:</strong> 127.0.0.1:${escapeHtml(localPort || 0)} -> ${escapeHtml(profile.remoteHost)}:${escapeHtml(profile.remotePort)}</span>
-          <span><strong>Ссылка:</strong> ${isActive ? escapeHtml(openUrl) : 'станет доступна после запуска'}</span>
+          <span><strong>Ссылка:</strong> ${canOpenForward ? escapeHtml(openUrl) : 'станет доступна после запуска'}</span>
+          <span><strong>Статус:</strong> ${escapeHtml(getForwardStatusText(activeForward))}</span>
           <span><strong>Вход:</strong> ${profile.privateKeyPath ? 'сертификат / ключ' : 'пароль'}</span>
           ${profile.privateKeyPath ? `<span class="meta-list__item--break"><strong>Путь к сертификату:</strong> ${escapeHtml(profile.privateKeyPath)}</span>` : ''}
           <span><strong>Заметка:</strong> ${escapeHtml(profile.note || 'нет')}</span>
@@ -285,7 +539,7 @@ function renderForwardProfiles() {
           </button>
           <button class="button" data-action="edit-forward-profile" data-forward-profile-id="${escapeHtml(profile.id)}">Изменить</button>
           <button class="button" data-action="delete-forward-profile" data-forward-profile-id="${escapeHtml(profile.id)}">Удалить</button>
-          ${isActive ? `<button class="button" data-action="open-forward-link" data-forward-url="${escapeHtml(openUrl)}">Открыть в браузере</button>` : ''}
+          ${canOpenForward ? `<button class="button" data-action="open-forward-link" data-forward-url="${escapeHtml(openUrl)}">Открыть в браузере</button>` : ''}
         </div>
       </article>
     `;
@@ -303,6 +557,7 @@ function renderPrograms() {
       <article class="program-card">
         <div class="program-card__meta">
           <h3>${escapeHtml(program.name)}</h3>
+          <p class="subtle">${escapeHtml(program.summary)}</p>
         </div>
 
         <div class="program-card__actions">
@@ -321,6 +576,9 @@ function renderPrograms() {
   elements.bundledPresetPath.textContent = state.programs.hasBundledFxSoundPreset
     ? `Встроенный файл найден: ${state.programs.bundledFxSoundPresetPath}`
     : `Если хочешь встроенный пресет в сборке, положи файл сюда: ${state.programs.bundledFxSoundPresetPath}`;
+  elements.installBundledPresetButton.textContent = state.programs.hasBundledFxSoundPreset
+    ? `Установить ${basenameFromPath(state.programs.bundledFxSoundPresetPath)}`
+    : 'Встроенный .fac не найден';
 
   elements.importFxSoundButton.disabled = !isWindows;
   elements.installBundledPresetButton.disabled = !isWindows || !state.programs.hasBundledFxSoundPreset;
@@ -334,6 +592,7 @@ function renderForwardProfileOptions() {
     '<option value="">Без профиля</option>',
     ...linuxProfiles.map((profile) => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name)} (${escapeHtml(profile.host)})</option>`)
   ].join('');
+  syncCustomSelect(elements.forwardProfileSelect);
 }
 
 function syncForwardProfile(profileId) {
@@ -349,6 +608,7 @@ function syncForwardProfile(profileId) {
   elements.forwardPrivateKeyPath.value = profile.privateKeyPath || '';
   elements.forwardAuthMethod.value = getPreferredLinuxAuthMethod(profile);
   updateForwardAuthFields();
+  syncCustomSelect(elements.forwardAuthMethod);
 }
 
 function openProfileModal(profile = null) {
@@ -362,6 +622,7 @@ function openProfileModal(profile = null) {
   elements.profilePrivateKeyPath.value = profile ? (profile.privateKeyPath || '') : '';
   elements.profileNote.value = profile ? (profile.note || '') : '';
   updateProfilePrivateKeyVisibility();
+  syncCustomSelect(elements.profilePlatform);
   openDialog('profileDialog');
 }
 
@@ -382,6 +643,7 @@ function openConnectModal(profileId) {
   elements.connectPassphrase.value = '';
   elements.connectRemember.checked = true;
   updateConnectAuthFields();
+  syncCustomSelect(elements.connectAuthMethod);
   openDialog('connectDialog');
 }
 
@@ -406,9 +668,11 @@ function openForwardModal(profile = null) {
   elements.forwardPassphrase.value = '';
   elements.forwardRemember.checked = true;
   elements.forwardSaveToConfig.checked = true;
-  elements.forwardProfileSelect.value = '';
   renderForwardProfileOptions();
+  elements.forwardProfileSelect.value = '';
   updateForwardAuthFields();
+  syncCustomSelect(elements.forwardProfileSelect);
+  syncCustomSelect(elements.forwardAuthMethod);
   openDialog('forwardDialog');
 }
 
@@ -424,6 +688,7 @@ function applyBootstrapState(payload) {
   renderForwardProfiles();
   renderPrograms();
   renderForwardProfileOptions();
+  syncAllCustomSelects();
 }
 
 async function refreshAppState() {
@@ -697,6 +962,26 @@ function wireStaticEvents() {
     button.addEventListener('click', () => closeDialog(button.dataset.closeModal));
   });
 
+  document.addEventListener('click', (event) => {
+    if (!activeCustomSelect) {
+      return;
+    }
+
+    if (!activeCustomSelect.wrapper.contains(event.target)) {
+      closeCustomSelect(activeCustomSelect);
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && activeCustomSelect) {
+      closeCustomSelect(activeCustomSelect);
+    }
+  });
+
+  document.querySelectorAll('dialog').forEach((dialog) => {
+    dialog.addEventListener('close', () => closeAllCustomSelects());
+  });
+
   elements.profilePlatform.addEventListener('change', () => {
     if (!elements.profilePort.value || elements.profilePort.value === '22' || elements.profilePort.value === '3389') {
       elements.profilePort.value = elements.profilePlatform.value === 'windows' ? '3389' : '22';
@@ -924,6 +1209,7 @@ async function init() {
   elements.bundledPresetPath = byId('bundledPresetPath');
   elements.toast = byId('toast');
 
+  initializeCustomSelects();
   wireStaticEvents();
   await refreshAppState();
 

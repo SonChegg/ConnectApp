@@ -105,17 +105,22 @@ const PROGRAMS = [
       '%LOCALAPPDATA%\\Programs\\Yandex Music\\Yandex Music.exe'
     ],
     searchRoots: [
-      '%LOCALAPPDATA%\\Programs'
-    ]
+      '%LOCALAPPDATA%\\Programs',
+      '%LOCALAPPDATA%'
+    ],
+    searchDepth: 6
   },
   {
     id: 'winscp',
     name: 'WinSCP',
     kind: 'exe',
-    url: 'https://winscp.net/download/WinSCP-6.5.5-Setup.exe/download',
+    url: 'https://winscp.net/download/WinSCP-6.5.5-Setup.exe',
     actionLabel: 'Установить',
     summary: 'Официальный классический установщик WinSCP с тихим режимом.',
-    silentArgs: ['/VERYSILENT', '/CURRENTUSER', '/NORESTART'],
+    installArgs: [
+      ['/VERYSILENT', '/CURRENTUSER', '/NORESTART'],
+      ['/SILENT', '/CURRENTUSER', '/NORESTART']
+    ],
     executableName: 'WinSCP.exe',
     launchTargets: [
       '%LOCALAPPDATA%\\Programs\\WinSCP\\WinSCP.exe',
@@ -132,10 +137,13 @@ const PROGRAMS = [
     id: 'vscode',
     name: 'VS Code',
     kind: 'exe',
-    url: 'https://code.visualstudio.com/thank-you?dv=win64',
+    url: 'https://update.code.visualstudio.com/latest/win32-x64-user/stable',
     actionLabel: 'Установить',
     summary: 'Ставит user installer VS Code и запускает редактор после установки.',
-    silentArgs: ['/VERYSILENT', '/CURRENTUSER', '/NORESTART', '/MERGETASKS=!runcode'],
+    installArgs: [
+      ['/VERYSILENT', '/CURRENTUSER', '/NORESTART', '/MERGETASKS=!runcode'],
+      ['/SILENT', '/CURRENTUSER', '/NORESTART', '/MERGETASKS=!runcode']
+    ],
     executableName: 'Code.exe',
     launchTargets: [
       '%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe',
@@ -143,8 +151,10 @@ const PROGRAMS = [
     ],
     searchRoots: [
       '%LOCALAPPDATA%\\Programs',
+      '%LOCALAPPDATA%',
       '%PROGRAMFILES%'
-    ]
+    ],
+    searchDepth: 6
   },
   {
     id: 'hiddify',
@@ -159,10 +169,14 @@ const PROGRAMS = [
     id: 'fxsound',
     name: 'FXSound',
     kind: 'exe',
-    url: 'https://github.com/fxsound2/fxsound-app/releases/download/latest/fxsound_setup.exe',
+    url: 'https://download.fxsound.com/fxsoundlatest',
     actionLabel: 'Установить',
     summary: 'Скачивает инсталлятор, запускает его скрытно и пытается открыть FXSound.',
-    silentArgs: ['/S'],
+    installArgs: [
+      ['/S'],
+      ['/silent'],
+      ['/quiet']
+    ],
     executableName: 'FxSound.exe',
     launchTargets: [
       '%PROGRAMFILES%\\FxSound\\FxSound.exe',
@@ -170,8 +184,11 @@ const PROGRAMS = [
     ],
     searchRoots: [
       '%PROGRAMFILES%',
+      '%PROGRAMFILES(X86)%',
+      '%LOCALAPPDATA%',
       '%LOCALAPPDATA%\\Programs'
-    ]
+    ],
+    searchDepth: 6
   }
 ];
 
@@ -215,12 +232,25 @@ function runCommand(command, args, options = {}) {
   });
 }
 
-function parseFilename(response, fallbackName) {
+function hasExpectedExtension(fileName, expectedExtensions = []) {
+  if (!fileName || expectedExtensions.length === 0) {
+    return false;
+  }
+
+  const extension = path.extname(fileName).toLowerCase();
+  return expectedExtensions.includes(extension);
+}
+
+function parseFilename(response, fallbackName, expectedExtensions = []) {
   const contentDisposition = response.headers.get('content-disposition') || '';
   const fromHeader = /filename="?([^"]+)"?/i.exec(contentDisposition);
 
   if (fromHeader && fromHeader[1]) {
-    return decodeURIComponent(fromHeader[1]);
+    const fileName = decodeURIComponent(fromHeader[1]);
+
+    if (!expectedExtensions.length || hasExpectedExtension(fileName, expectedExtensions)) {
+      return fileName;
+    }
   }
 
   const responseUrl = response.url || '';
@@ -228,7 +258,20 @@ function parseFilename(response, fallbackName) {
   try {
     const url = new URL(responseUrl);
     const candidate = decodeURIComponent(path.basename(url.pathname));
-    return candidate || fallbackName;
+
+    if (!candidate) {
+      return fallbackName;
+    }
+
+    if (!expectedExtensions.length) {
+      return candidate;
+    }
+
+    if (hasExpectedExtension(candidate, expectedExtensions)) {
+      return candidate;
+    }
+
+    return fallbackName;
   } catch {
     return fallbackName;
   }
@@ -284,7 +327,8 @@ async function findProgramExecutable(program) {
 
   for (const root of program.searchRoots || []) {
     const expandedRoot = expandEnvPath(root);
-    const found = await shallowFindByName(expandedRoot, program.executableName, 4);
+    const searchDepth = Number(program.searchDepth) > 0 ? Number(program.searchDepth) : 4;
+    const found = await shallowFindByName(expandedRoot, program.executableName, searchDepth);
 
     if (found) {
       return found;
@@ -302,7 +346,63 @@ async function ensureDirectory(dirPath) {
   await fsPromises.mkdir(dirPath, { recursive: true });
 }
 
-async function downloadFile(url, targetFile, fallbackName) {
+function toPowerShellStringArray(values) {
+  const items = Array.isArray(values) ? values : [];
+  return `@(${items.map((value) => `'${escapePowerShell(value)}'`).join(', ')})`;
+}
+
+async function runWindowsInstaller(installerPath, attempts, options = {}) {
+  assertWindowsOnly();
+
+  const strategies = Array.isArray(attempts) && attempts.length > 0
+    ? attempts
+    : [[]];
+  let lastError = null;
+
+  for (const args of strategies) {
+    try {
+      await runCommand('powershell.exe', [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        `$process = Start-Process -FilePath '${escapePowerShell(installerPath)}' -ArgumentList ${toPowerShellStringArray(args)} -WindowStyle Hidden -PassThru -Wait; exit $process.ExitCode`
+      ], {
+        windowsHide: true,
+        successCodes: options.successCodes || [0, 1641, 3010]
+      });
+
+      return {
+        args
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('Не удалось запустить установщик.');
+}
+
+async function waitForProgramExecutable(program, timeoutMs = 90000) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() <= deadline) {
+    const executable = await findProgramExecutable(program);
+
+    if (executable) {
+      return executable;
+    }
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 1500);
+    });
+  }
+
+  return null;
+}
+
+async function downloadFile(url, targetFile, fallbackName, expectedExtensions = []) {
   const response = await fetch(url, {
     redirect: 'follow'
   });
@@ -311,7 +411,13 @@ async function downloadFile(url, targetFile, fallbackName) {
     throw new Error(`Не удалось скачать файл: HTTP ${response.status}`);
   }
 
-  const fileName = parseFilename(response, fallbackName);
+  const contentType = (response.headers.get('content-type') || '').toLowerCase();
+
+  if (contentType.includes('text/html')) {
+    throw new Error(`Сервер вернул HTML-страницу вместо файла: ${url}`);
+  }
+
+  const fileName = parseFilename(response, fallbackName, expectedExtensions);
   const destination = path.join(path.dirname(targetFile), fileName);
 
   await ensureDirectory(path.dirname(destination));
@@ -348,14 +454,44 @@ class ProgramsService {
     this.userDataDir = userDataDir;
     this.downloadsDir = path.join(userDataDir, 'downloads');
     this.portableDir = path.join(userDataDir, 'portable-apps');
-    this.bundledFxSoundPresetPath = path.join(app.getAppPath(), 'assets', 'fxsound', 'default.fac');
+    this.bundledFxSoundPresetDir = path.join(app.getAppPath(), 'assets', 'fxsound');
   }
 
   getFxSoundPresetTargetDir() {
     return path.join(this.app.getPath('appData'), 'FxSound', 'Presets');
   }
 
+  async resolveBundledFxSoundPresetPath() {
+    const preferredPath = path.join(this.bundledFxSoundPresetDir, 'default.fac');
+
+    if (await pathExists(preferredPath)) {
+      return preferredPath;
+    }
+
+    let entries;
+
+    try {
+      entries = await fsPromises.readdir(this.bundledFxSoundPresetDir, { withFileTypes: true });
+    } catch {
+      return preferredPath;
+    }
+
+    const presetEntry = entries
+      .filter((entry) => entry.isFile() && path.extname(entry.name).toLowerCase() === '.fac')
+      .sort((left, right) => left.name.localeCompare(right.name, 'ru'))
+      [0];
+
+    if (!presetEntry) {
+      return preferredPath;
+    }
+
+    return path.join(this.bundledFxSoundPresetDir, presetEntry.name);
+  }
+
   async getProgramsPayload() {
+    const bundledFxSoundPresetPath = await this.resolveBundledFxSoundPresetPath();
+    const hasBundledFxSoundPreset = await pathExists(bundledFxSoundPresetPath);
+
     return {
       items: PROGRAMS.map((program) => ({
         id: program.id,
@@ -365,8 +501,8 @@ class ProgramsService {
         actionLabel: program.actionLabel,
         summary: program.summary
       })),
-      hasBundledFxSoundPreset: await pathExists(this.bundledFxSoundPresetPath),
-      bundledFxSoundPresetPath: this.bundledFxSoundPresetPath,
+      hasBundledFxSoundPreset,
+      bundledFxSoundPresetPath,
       fxSoundPresetTargetDir: this.getFxSoundPresetTargetDir()
     };
   }
@@ -392,7 +528,12 @@ class ProgramsService {
     const openPortableFolder = options.openPortableFolder !== false;
     const openExecutable = options.openExecutable !== false;
     const targetDir = path.join(this.downloadsDir, program.id);
-    const downloadedFile = await downloadFile(program.url, path.join(targetDir, 'download.bin'), `${program.id}.${program.kind}`);
+    const downloadedFile = await downloadFile(
+      program.url,
+      path.join(targetDir, 'download.bin'),
+      `${program.id}.${program.kind}`,
+      [`.${program.kind}`]
+    );
 
     if (program.kind === 'zip') {
       const destination = path.join(this.portableDir, program.extractFolder);
@@ -413,16 +554,15 @@ class ProgramsService {
       };
     }
 
-    await runCommand(downloadedFile, program.silentArgs, {
-      windowsHide: true,
+    await runWindowsInstaller(downloadedFile, program.installArgs || [program.silentArgs || []], {
       successCodes: [0, 1641, 3010]
     });
 
-    const executable = await findProgramExecutable(program);
+    const executable = await waitForProgramExecutable(program, program.installTimeoutMs || 90000);
 
     if (!executable) {
       return {
-        message: `${program.name} установлен, но путь запуска найти не удалось.`,
+        message: `${program.name} установщик завершил работу, но путь запуска найти не удалось.`,
         type: 'exe'
       };
     }
@@ -470,7 +610,9 @@ class ProgramsService {
       }
     }
 
-    if (await pathExists(this.bundledFxSoundPresetPath)) {
+    const bundledFxSoundPresetPath = await this.resolveBundledFxSoundPresetPath();
+
+    if (await pathExists(bundledFxSoundPresetPath)) {
       try {
         const presetResult = await this.installBundledFxSoundPreset();
         installed.push(`FxSound preset: ${presetResult.message}`);
@@ -518,11 +660,13 @@ class ProgramsService {
   async installBundledFxSoundPreset() {
     assertWindowsOnly();
 
-    if (!await pathExists(this.bundledFxSoundPresetPath)) {
-      throw new Error(`Не найден встроенный пресет: ${this.bundledFxSoundPresetPath}`);
+    const bundledFxSoundPresetPath = await this.resolveBundledFxSoundPresetPath();
+
+    if (!await pathExists(bundledFxSoundPresetPath)) {
+      throw new Error(`Не найден встроенный пресет: ${bundledFxSoundPresetPath}`);
     }
 
-    return this.importFxSoundPreset(this.bundledFxSoundPresetPath);
+    return this.importFxSoundPreset(bundledFxSoundPresetPath);
   }
 }
 

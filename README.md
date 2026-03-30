@@ -25,6 +25,39 @@ npm start
 npm run dist:win
 ```
 
+## Build Windows installer with SignPath
+
+This project also includes a SignPath signing hook for `electron-builder` on Windows:
+
+```bash
+npm run dist:win:signpath
+```
+
+Before running it:
+
+1. Install the SignPath Windows KSP on the Windows machine that builds the app.
+2. Keep the public X.509 certificate outside the repository and point `SIGNPATH_CERT_FILE` to it.
+3. Set these environment variables in PowerShell:
+
+```powershell
+$env:SIGNPATH_CERT_FILE = "C:\signing\ConnectApp.pem"
+$env:SIGNPATH_PROJECT_SLUG = "your-project-slug"
+$env:SIGNPATH_POLICY_SLUG = "your-signing-policy-slug"
+```
+
+Optional variables:
+
+```powershell
+$env:SIGNPATH_TIMESTAMP_URL = "http://timestamp.digicert.com"
+$env:SIGNTOOL_PATH = "C:\Program Files (x86)\Windows Kits\10\App Certification Kit\signtool.exe"
+```
+
+Notes:
+
+- `ConnectApp.pem` must contain only the public X.509 certificate. The private key stays in SignPath.
+- If `signtool.exe` rejects PEM input on your machine, convert the certificate to `.cer` and use that path in `SIGNPATH_CERT_FILE`.
+- Do not commit signing certificates or signing secrets into the repository.
+
 ## Build macOS app
 
 ```bash
@@ -38,6 +71,8 @@ If you want a bundled FxSound preset inside the app, place the file here before 
 ```text
 /home/ConnectApp/assets/fxsound/default.fac
 ```
+
+`default.fac` remains the preferred name. If it is absent, the app will pick the first `.fac` file it finds in `/home/ConnectApp/assets/fxsound/`.
 
 At runtime the app copies presets into the current user's roaming folder:
 

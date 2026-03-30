@@ -86,7 +86,7 @@
         <div class="field-row">
           <label class="field">
             <span>Тип</span>
-            <select id="profilePlatform">
+            <select id="profilePlatform" data-select-placeholder="Выбери тип профиля">
               <option value="linux">Linux</option>
               <option value="windows">Windows</option>
             </select>
@@ -152,7 +152,7 @@
 
         <label id="connectAuthMethodField" class="field" hidden>
           <span>Способ входа</span>
-          <select id="connectAuthMethod">
+          <select id="connectAuthMethod" data-select-placeholder="Выбери способ входа">
             <option value="password">Пароль</option>
             <option value="privateKey">Сертификат / SSH-ключ</option>
           </select>
@@ -213,7 +213,7 @@
 
         <label class="field">
           <span>Взять данные из профиля</span>
-          <select id="forwardProfileSelect">
+          <select id="forwardProfileSelect" data-select-placeholder="Выбери профиль" data-select-max-height="14rem">
             <option value="">Без профиля</option>
           </select>
         </label>
@@ -244,7 +244,7 @@
 
         <label class="field">
           <span>Способ входа</span>
-          <select id="forwardAuthMethod">
+          <select id="forwardAuthMethod" data-select-placeholder="Выбери способ входа">
             <option value="password">Пароль</option>
             <option value="privateKey">Сертификат / SSH-ключ</option>
           </select>
@@ -303,12 +303,12 @@
       </form>
     </dialog>
 
-    <dialog id="programsDialog" class="modal modal--wide">
+    <dialog id="programsDialog" class="modal modal--programs">
       <div class="modal__content">
         <div class="modal__header">
           <div>
             <p class="section-head__eyebrow">Программы</p>
-            <h3>Быстрая установка и портативные архивы</h3>
+            <h3>Быстрая установка</h3>
           </div>
           <div class="topbar__actions">
             <button id="installAllProgramsButton" type="button" class="button button--primary">Установить всё</button>
