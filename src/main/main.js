@@ -165,6 +165,8 @@ async function resolveSshAuth(options) {
 }
 
 async function createMainWindow() {
+  const windowIconPath = path.join(__dirname, '..', '..', 'assets', 'icon.png');
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -172,6 +174,7 @@ async function createMainWindow() {
     minHeight: 660,
     backgroundColor: '#0a1220',
     title: 'ConnectApp',
+    icon: windowIconPath,
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload.js'),
       contextIsolation: true,

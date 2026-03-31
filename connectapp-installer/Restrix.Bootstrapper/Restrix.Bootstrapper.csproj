@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ApplicationIcon>..\\icon.ico</ApplicationIcon>
+    <AssemblyName>ConnectAppSetup</AssemblyName>
+    <StartupObject>Restrix.Bootstrapper.Program</StartupObject>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\\Restrix.Installation.Utils\\Restrix.Installation.Utils.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\\icon.ico">
+      <Link>icon.ico</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\\ConnectApp.Installer.zip">
+      <Link>ConnectApp.Installer.zip</Link>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <Target Name="ValidateEmbeddedInstallerZip" BeforeTargets="Build">
+    <Error Condition="!Exists('..\\ConnectApp.Installer.zip')"
+           Text="ConnectApp.Installer.zip not found. Run package-installer.ps1 before building the bootstrapper." />
+  </Target>
+
+</Project>

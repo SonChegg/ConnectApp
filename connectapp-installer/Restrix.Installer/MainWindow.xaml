@@ -1,0 +1,102 @@
+<Window x:Class="Restrix.Installer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Установщик ConnectApp"
+        Height="360"
+        Width="620"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Icon="icon.ico"
+        Loaded="Window_Loaded"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown">
+    <Window.Resources>
+        <LinearGradientBrush x:Key="BrandTitleGradient" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#2DD4BF" Offset="0" />
+            <GradientStop Color="#3B82F6" Offset="0.28" />
+            <GradientStop Color="#6366F1" Offset="0.62" />
+            <GradientStop Color="#A855F7" Offset="1" />
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="BrandProgressGradient" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#22D3EE" Offset="0" />
+            <GradientStop Color="#3B82F6" Offset="0.32" />
+            <GradientStop Color="#7C3AED" Offset="0.7" />
+            <GradientStop Color="#F97316" Offset="1" />
+        </LinearGradientBrush>
+    </Window.Resources>
+    <Grid Margin="16">
+        <Border CornerRadius="18" Background="#0B1220">
+            <Border.Effect>
+                <DropShadowEffect Color="#000000"
+                                  BlurRadius="24"
+                                  ShadowDepth="0"
+                                  Opacity="0.45" />
+            </Border.Effect>
+
+            <Border CornerRadius="18">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#0B1220" Offset="0" />
+                        <GradientStop Color="#0F172A" Offset="0.5" />
+                        <GradientStop Color="#111827" Offset="1" />
+                    </LinearGradientBrush>
+                </Border.Background>
+
+                <Grid Margin="28">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                        <Image Source="logo.png" Width="188" Height="88" Margin="0,0,18,0" Stretch="Uniform" />
+                        <StackPanel>
+                            <TextBlock Text="{Binding TitleText}"
+                                       FontSize="30"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource BrandTitleGradient}" />
+                            <TextBlock Text="{Binding SubtitleText}"
+                                       FontSize="14"
+                                       Foreground="#F59E0B" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Status}"
+                                   FontSize="16"
+                                   Foreground="#E2E8F0"
+                                   Margin="0,0,0,12" />
+
+                        <ProgressBar Height="8"
+                                     IsIndeterminate="True"
+                                     Foreground="{StaticResource BrandProgressGradient}"
+                                     Background="#1F2937"
+                                     BorderThickness="0"
+                                     Margin="0,0,0,16">
+                            <ProgressBar.Effect>
+                                <DropShadowEffect Color="#7C3AED"
+                                                  BlurRadius="12"
+                                                  ShadowDepth="0"
+                                                  Opacity="0.7" />
+                            </ProgressBar.Effect>
+                        </ProgressBar>
+
+                        <!-- Intentionally no install path/mode display -->
+                    </StackPanel>
+
+                    <TextBlock Grid.Row="2"
+                               Text="{Binding FooterText}"
+                               FontSize="11"
+                               Foreground="#64748B" />
+                </Grid>
+            </Border>
+        </Border>
+    </Grid>
+</Window>

@@ -82,9 +82,25 @@ select {
 .topbar {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 1rem;
   padding: 1.15rem 1.25rem;
   border-radius: 1.5rem;
+}
+
+.topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.topbar__brand-mark {
+  width: 4.4rem;
+  height: 4.4rem;
+  flex: 0 0 auto;
+  object-fit: contain;
+  filter: drop-shadow(0 0.85rem 1.8rem rgba(54, 120, 255, 0.28));
 }
 
 .topbar h1,
@@ -592,6 +608,15 @@ select:focus {
 
   .topbar {
     align-items: flex-start;
+  }
+
+  .topbar__brand {
+    gap: 0.85rem;
+  }
+
+  .topbar__brand-mark {
+    width: 3.6rem;
+    height: 3.6rem;
   }
 
   .layout {

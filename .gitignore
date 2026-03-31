@@ -3,3 +3,6 @@ dist
 out
 release
 *.log
+connectapp-installer/**/bin/
+connectapp-installer/**/obj/
+connectapp-installer/*.zip

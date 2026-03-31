@@ -7,6 +7,8 @@
   "scripts": {
     "start": "electron .",
     "check": "node --check src/main/main.js && node --check src/main/store.js && node --check src/main/remote.js && node --check src/main/port-forward-manager.js && node --check src/main/programs.js && node --check src/main/ssh-reconnect-policy.js && node --check src/main/ssh-terminal-window.js && node --check src/preload.js && node --check src/helpers/ssh-terminal.js && node --check src/renderer/app.js && node --check src/renderer/terminal.js",
+    "dist:win:dir": "electron-builder --win dir -c.win.signAndEditExecutable=false",
+    "dist:win:github": "npm run dist:win:dir && node scripts/build-github-release-assets.js",
     "dist:win": "electron-builder --win nsis",
     "dist:win:signpath": "electron-builder --win nsis -c.win.signtoolOptions.sign=./scripts/signpath-sign.js",
     "dist:mac": "electron-builder --mac"
@@ -27,6 +29,7 @@
       "package.json"
     ],
     "win": {
+      "icon": "assets/icon.ico",
       "target": [
         {
           "target": "nsis",
