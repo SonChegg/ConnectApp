@@ -145,8 +145,8 @@ const PROGRAMS = [
     actionLabel: 'Установить',
     summary: 'Ставит user installer VS Code и запускает редактор после установки.',
     installArgs: [
-      ['/VERYSILENT', '/CURRENTUSER', '/NORESTART', '/MERGETASKS=!runcode'],
-      ['/SILENT', '/CURRENTUSER', '/NORESTART', '/MERGETASKS=!runcode']
+      ['/VERYSILENT', '/SP-', '/NORESTART', '/MERGETASKS=!runcode'],
+      ['/SILENT', '/SP-', '/NORESTART', '/MERGETASKS=!runcode']
     ],
     executableName: 'Code.exe',
     launchTargets: [
@@ -189,6 +189,7 @@ const PROGRAMS = [
     url: 'https://download.fxsound.com/fxsoundlatest',
     actionLabel: 'Установить',
     summary: 'Скачивает инсталлятор, запускает его скрытно и пытается открыть FXSound.',
+    requiresAdmin: true,
     installArgs: [
       ['/S'],
       ['/silent'],
@@ -368,12 +369,32 @@ function toPowerShellStringArray(values) {
   return `@(${items.map((value) => `'${escapePowerShell(value)}'`).join(', ')})`;
 }
 
+function buildStartProcessCommand(installerPath, args, runAs) {
+  const parts = [`-FilePath '${escapePowerShell(installerPath)}'`];
+
+  if (Array.isArray(args) && args.length > 0) {
+    parts.push(`-ArgumentList ${toPowerShellStringArray(args)}`);
+  }
+
+  if (runAs) {
+    // Elevation prompt (UAC) is required; window style is ignored for elevated launches.
+    parts.push('-Verb RunAs');
+  } else {
+    parts.push('-WindowStyle Hidden');
+  }
+
+  parts.push('-PassThru', '-Wait');
+
+  return `$process = Start-Process ${parts.join(' ')}; exit $process.ExitCode`;
+}
+
 async function runWindowsInstaller(installerPath, attempts, options = {}) {
   assertWindowsOnly();
 
   const strategies = Array.isArray(attempts) && attempts.length > 0
     ? attempts
     : [[]];
+  const runAs = options.runAs === true;
   let lastError = null;
 
   for (const args of strategies) {
@@ -384,7 +405,7 @@ async function runWindowsInstaller(installerPath, attempts, options = {}) {
         '-ExecutionPolicy',
         'Bypass',
         '-Command',
-        `$process = Start-Process -FilePath '${escapePowerShell(installerPath)}' -ArgumentList ${toPowerShellStringArray(args)} -WindowStyle Hidden -PassThru -Wait; exit $process.ExitCode`
+        buildStartProcessCommand(installerPath, args, runAs)
       ], {
         windowsHide: true,
         successCodes: options.successCodes || [0, 1641, 3010]
@@ -572,7 +593,8 @@ class ProgramsService {
     }
 
     await runWindowsInstaller(downloadedFile, program.installArgs || [program.silentArgs || []], {
-      successCodes: [0, 1641, 3010]
+      successCodes: [0, 1641, 3010],
+      runAs: program.requiresAdmin === true
     });
 
     const executable = await waitForProgramExecutable(program, program.installTimeoutMs || 90000);

@@ -557,7 +557,6 @@ function renderPrograms() {
       <article class="program-card">
         <div class="program-card__meta">
           <h3>${escapeHtml(program.name)}</h3>
-          <p class="subtle">${escapeHtml(program.summary)}</p>
         </div>
 
         <div class="program-card__actions">
@@ -927,6 +926,8 @@ async function handleDeleteForwardProfile(profileId) {
 }
 
 function wireStaticEvents() {
+  elements.winMinimize.addEventListener('click', () => window.connectApp.minimizeWindow());
+  elements.winClose.addEventListener('click', () => window.connectApp.closeWindow());
   elements.addProfileButton.addEventListener('click', () => openProfileModal());
   elements.forwardButton.addEventListener('click', () => openForwardModal());
   elements.programsButton.addEventListener('click', () => openDialog('programsDialog'));
@@ -1135,6 +1136,8 @@ function wireStaticEvents() {
 }
 
 async function init() {
+  elements.winMinimize = byId('winMinimize');
+  elements.winClose = byId('winClose');
   elements.addProfileButton = byId('addProfileButton');
   elements.forwardButton = byId('forwardButton');
   elements.programsButton = byId('programsButton');

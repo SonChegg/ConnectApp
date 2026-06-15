@@ -166,18 +166,14 @@ async function resolveSshAuth(options) {
 
 async function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 980,
-    minHeight: 660,
+    width: 1480,
+    height: 940,
+    minWidth: 1100,
+    minHeight: 740,
     backgroundColor: '#070a12',
     title: '',
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#00000000',
-      symbolColor: '#e8ecf6',
-      height: 40
-    },
+    frame: false,
+    maximizable: false,
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload.js'),
       contextIsolation: true,
@@ -501,6 +497,20 @@ async function handleImportConfig() {
 function registerIpcHandlers() {
   ipcMain.handle('app:bootstrap', async () => buildBootstrapPayload());
   ipcMain.handle('app:open-external', async (_event, url) => shell.openExternal(url));
+  ipcMain.on('window:minimize', (event) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+
+    if (senderWindow && !senderWindow.isDestroyed()) {
+      senderWindow.minimize();
+    }
+  });
+  ipcMain.on('window:close', (event) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+
+    if (senderWindow && !senderWindow.isDestroyed()) {
+      senderWindow.close();
+    }
+  });
   ipcMain.on('terminal:input', (_event, payload) => {
     sshTerminalManager.handleInput(payload.sessionId, payload.data);
   });

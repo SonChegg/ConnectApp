@@ -180,6 +180,17 @@ const detachStatus = window.connectApp.onTerminalStatus((payload) => {
   updateStatus(payload);
 });
 
+const winMinimize = document.getElementById('winMinimize');
+const winClose = document.getElementById('winClose');
+
+if (winMinimize) {
+  winMinimize.addEventListener('click', () => window.connectApp.minimizeWindow());
+}
+
+if (winClose) {
+  winClose.addEventListener('click', () => window.connectApp.closeWindow());
+}
+
 window.addEventListener('resize', () => {
   fitTerminal();
 });

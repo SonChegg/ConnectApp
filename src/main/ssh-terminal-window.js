@@ -258,18 +258,14 @@ class SshTerminalWindowManager {
   async openSession({ profile, username, password, privateKey, passphrase }) {
     const sessionId = crypto.randomUUID();
     const window = new BrowserWindow({
-      width: 1100,
-      height: 700,
-      minWidth: 780,
-      minHeight: 460,
+      width: 1240,
+      height: 780,
+      minWidth: 860,
+      minHeight: 520,
       backgroundColor: '#070a12',
       title: '',
-      titleBarStyle: 'hidden',
-      titleBarOverlay: {
-        color: '#00000000',
-        symbolColor: '#e8ecf6',
-        height: 40
-      },
+      frame: false,
+      maximizable: false,
       webPreferences: {
         preload: this.preloadPath,
         contextIsolation: true,

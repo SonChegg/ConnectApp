@@ -1,6 +1,6 @@
 {
   "name": "connect-app",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Desktop remote connection launcher with Windows/Linux profiles and utility installers.",
   "main": "src/main/main.js",
   "license": "UNLICENSED",

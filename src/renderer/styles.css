@@ -50,7 +50,19 @@ select {
   font: inherit;
 }
 
-/* ---- Frameless draggable title strip ---- */
+/* ---- Hidden scrollbars (scroll still works) ---- */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* ---- Frameless draggable title strip + custom window controls ---- */
 .titlebar {
   position: fixed;
   top: 0;
@@ -58,10 +70,47 @@ select {
   right: 0;
   height: 40px;
   z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 0.5rem;
   -webkit-app-region: drag;
   app-region: drag;
-  pointer-events: none;
   background: transparent;
+}
+
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.window-control {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 1.7rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.window-control:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.window-control--close:hover {
+  background: rgba(255, 107, 107, 0.9);
+  border-color: rgba(255, 107, 107, 0.9);
+  color: #1a0708;
 }
 
 /* ---- Aurora background blobs ---- */
@@ -106,7 +155,7 @@ select {
   flex-direction: column;
   gap: 1rem;
   min-height: 100vh;
-  padding: 1.35rem 1.25rem 1.25rem;
+  padding: 2.85rem 1.25rem 1.25rem;
 }
 
 /* ---- Shared surfaces ---- */
@@ -728,7 +777,7 @@ select:focus {
 /* ---- Responsive ---- */
 @media (max-width: 1080px) {
   .app-shell {
-    padding: 1.35rem 1rem 1rem;
+    padding: 2.85rem 1rem 1rem;
   }
 
   .topbar,

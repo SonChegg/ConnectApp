@@ -10,11 +10,21 @@
   <body>
     <div class="terminal-shell">
       <header class="terminal-topbar">
-        <div>
+        <div class="terminal-topbar__info">
           <p id="terminalTitle" class="terminal-title">SSH</p>
           <p id="terminalSubtitle" class="terminal-subtitle"></p>
         </div>
-        <p id="terminalStatus" class="terminal-status">Подключение...</p>
+        <div class="terminal-topbar__right">
+          <p id="terminalStatus" class="terminal-status">Подключение...</p>
+          <div class="window-controls">
+            <button id="winMinimize" class="window-control" type="button" aria-label="Свернуть" title="Свернуть">
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5.4" width="8" height="1.2" rx="0.6" fill="currentColor"/></svg>
+            </button>
+            <button id="winClose" class="window-control window-control--close" type="button" aria-label="Закрыть" title="Закрыть">
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3 L9 9 M9 3 L3 9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        </div>
       </header>
 
       <main class="terminal-main">
