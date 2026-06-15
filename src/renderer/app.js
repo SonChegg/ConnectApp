@@ -1106,15 +1106,6 @@ function wireStaticEvents() {
     }
   });
 
-  elements.copyHiddifyButton.addEventListener('click', async () => {
-    try {
-      const result = await window.connectApp.copyHiddifyConfig();
-      showToast(result.message);
-    } catch (error) {
-      showToast(error.message);
-    }
-  });
-
   elements.importFxSoundButton.addEventListener('click', async () => {
     try {
       const result = await window.connectApp.importFxSoundPreset();
@@ -1202,7 +1193,6 @@ async function init() {
   elements.forwardSaveToConfig = byId('forwardSaveToConfig');
   elements.programsList = byId('programsList');
   elements.installAllProgramsButton = byId('installAllProgramsButton');
-  elements.copyHiddifyButton = byId('copyHiddifyButton');
   elements.importFxSoundButton = byId('importFxSoundButton');
   elements.installBundledPresetButton = byId('installBundledPresetButton');
   elements.fxSoundTargetPath = byId('fxSoundTargetPath');

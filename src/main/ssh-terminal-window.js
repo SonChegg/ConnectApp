@@ -262,8 +262,14 @@ class SshTerminalWindowManager {
       height: 700,
       minWidth: 780,
       minHeight: 460,
-      backgroundColor: '#08111f',
-      title: `${profile.name} - SSH`,
+      backgroundColor: '#070a12',
+      title: '',
+      titleBarStyle: 'hidden',
+      titleBarOverlay: {
+        color: '#00000000',
+        symbolColor: '#e8ecf6',
+        height: 40
+      },
       webPreferences: {
         preload: this.preloadPath,
         contextIsolation: true,
@@ -273,6 +279,7 @@ class SshTerminalWindowManager {
     });
 
     window.removeMenu();
+    window.setTitle('');
 
     const record = {
       id: sessionId,

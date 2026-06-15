@@ -165,16 +165,19 @@ async function resolveSshAuth(options) {
 }
 
 async function createMainWindow() {
-  const windowIconPath = path.join(__dirname, '..', '..', 'assets', 'icon.png');
-
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 980,
     minHeight: 660,
-    backgroundColor: '#0a1220',
-    title: 'ConnectApp',
-    icon: windowIconPath,
+    backgroundColor: '#070a12',
+    title: '',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#00000000',
+      symbolColor: '#e8ecf6',
+      height: 40
+    },
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload.js'),
       contextIsolation: true,
@@ -184,6 +187,7 @@ async function createMainWindow() {
   });
 
   mainWindow.removeMenu();
+  mainWindow.setTitle('');
   await mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 }
 

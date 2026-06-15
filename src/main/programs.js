@@ -86,29 +86,33 @@ const PROGRAMS = [
     id: 'ayugram',
     name: 'AyuGram',
     kind: 'zip',
-    url: 'https://github.com/AyuGram/AyuGramDesktop/releases/download/v6.3.10/AyuGram.zip',
+    url: 'https://github.com/SonChegg/AyuGramDesktop/releases/latest/download/AyuGram-v6.7.8-windows-x64.zip',
     actionLabel: 'Скачать архив',
     summary: 'Портативная сборка. Архив распакуется, после чего откроется папка.',
     extractFolder: 'AyuGram'
   },
   {
-    id: 'yandex-music',
-    name: 'Yandex Music',
+    id: 'spotify',
+    name: 'Spotify',
     kind: 'exe',
-    url: 'https://music-desktop-application.s3.yandex.net/stable/Yandex_Music_x64_5.75.2.exe',
+    url: 'https://download.scdn.co/SpotifySetup.exe',
     actionLabel: 'Установить',
-    summary: 'Скачивает установщик, запускает его скрытно и пытается открыть приложение.',
-    silentArgs: ['/S'],
-    executableName: 'YandexMusic.exe',
+    summary: 'Скачивает установщик Spotify, запускает его скрытно и открывает приложение.',
+    installArgs: [
+      ['/silent'],
+      []
+    ],
+    executableName: 'Spotify.exe',
     launchTargets: [
-      '%LOCALAPPDATA%\\Programs\\YandexMusic\\YandexMusic.exe',
-      '%LOCALAPPDATA%\\Programs\\Yandex Music\\Yandex Music.exe'
+      '%APPDATA%\\Spotify\\Spotify.exe',
+      '%LOCALAPPDATA%\\Microsoft\\WindowsApps\\Spotify.exe'
     ],
     searchRoots: [
-      '%LOCALAPPDATA%\\Programs',
+      '%APPDATA%\\Spotify',
+      '%APPDATA%',
       '%LOCALAPPDATA%'
     ],
-    searchDepth: 6
+    searchDepth: 4
   },
   {
     id: 'winscp',
@@ -157,13 +161,26 @@ const PROGRAMS = [
     searchDepth: 6
   },
   {
-    id: 'hiddify',
-    name: 'Hiddify',
-    kind: 'zip',
-    url: 'https://github.com/hiddify/hiddify-next/releases/download/v2.5.7/Hiddify-Windows-Portable-x64.zip',
-    actionLabel: 'Скачать архив',
-    summary: 'Портативная версия. Архив распакуется, затем откроется папка с файлами.',
-    extractFolder: 'Hiddify'
+    id: 'happ',
+    name: 'Happ',
+    kind: 'exe',
+    url: 'https://github.com/Happ-proxy/happ-desktop/releases/latest/download/setup-Happ.x64.exe',
+    actionLabel: 'Установить',
+    summary: 'Ставит Happ в тихом режиме и запускает приложение после установки.',
+    installArgs: [
+      ['/S'],
+      ['/VERYSILENT', '/NORESTART']
+    ],
+    executableName: 'Happ.exe',
+    launchTargets: [
+      '%LOCALAPPDATA%\\Programs\\happ-desktop\\Happ.exe',
+      '%LOCALAPPDATA%\\Programs\\Happ\\Happ.exe'
+    ],
+    searchRoots: [
+      '%LOCALAPPDATA%\\Programs',
+      '%LOCALAPPDATA%'
+    ],
+    searchDepth: 5
   },
   {
     id: 'fxsound',
